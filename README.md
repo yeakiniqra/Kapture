@@ -1,25 +1,117 @@
-# Kapture — Lightshot-style screenshot tool for Ubuntu (PyQt5)
+# Kapture — Lightshot-style screenshot tool for Ubuntu
 
-## Install dependencies
+## Installation
+
+### For Users — install the .deb package (recommended)
+
+Just like installing Discord or VS Code — one file, done. No Python or terminal knowledge required.
+
+> **Compatible with:** Ubuntu 20.04 and later, on any 64-bit Intel or AMD processor (`amd64`).
+
+---
+
+**Step 1 — Install a screen capture backend**
+
+Kapture needs one of these system tools to take screenshots. Open a terminal and run:
 
 ```bash
-pip install PyQt5 pynput qasync
+sudo apt install gnome-screenshot
 ```
 
-Also requires one of the following to be installed on your system for accurate screen capture:
+If that's not available, use the fallback:
+
+```bash
+sudo apt install scrot
+```
+
+> You only need one. `gnome-screenshot` is preferred — it gives the most accurate results.
+
+---
+
+**Step 2 — Download the .deb**
+
+Go to the [Releases page](https://github.com/yeakin-iqra/kapture/releases) and download the latest `kapture_X.X.X_amd64.deb` file.
+
+---
+
+**Step 3 — Install**
+
+**Option A — Double-click** the downloaded `.deb` file in your file manager.  
+It will open in GNOME Software / GDebi. Click **Install** and enter your password.
+
+**Option B — Terminal**
+
+```bash
+sudo dpkg -i kapture_1.0.0_amd64.deb
+```
+
+---
+
+**Step 4 — Launch**
+
+Search for **Kapture** in your app launcher, or run `kapture` in a terminal.
+
+The app starts silently in the system tray. Press `Print Screen` or `Ctrl+Shift+S` to take a screenshot.
+
+---
+
+**Uninstall**
+
+```bash
+sudo apt remove kapture
+```
+
+---
+
+### For Developers — run from source
+
+**Step 1 — Clone the repository**
+
+```bash
+git clone https://github.com/yeakin-iqra/kapture.git
+cd kapture
+```
+
+**Step 2 — Create and activate a virtual environment**
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+**Step 3 — Install Python dependencies**
+
+```bash
+pip install -r requirements.txt
+```
+
+**Step 4 — Install a screen capture backend**
 
 ```bash
 sudo apt install gnome-screenshot   # preferred
+# or
 sudo apt install scrot               # fallback
 ```
 
-## Run
+**Step 5 — Run**
 
 ```bash
-python3 screenshot_tool.py
+python3 main.py
 ```
 
-The app runs in the system tray. Press `Ctrl+Shift+S` to start a capture.
+---
+
+### For Developers — build the .deb yourself
+
+```bash
+# Install packaging tools (one-time)
+sudo apt install dpkg-dev
+
+# Build .deb (runs PyInstaller then packages it)
+bash build_deb.sh
+```
+
+Output: `kapture_1.0.0_amd64.deb` — ready to share or install.
 
 ## Usage
 
@@ -36,29 +128,14 @@ The app runs in the system tray. Press `Ctrl+Shift+S` to start a capture.
 
 ## Change hotkey
 
-Edit this line in `screenshot_tool.py`:
+Edit the `HOTKEYS` list near the top of `main.py`:
 ```python
-HOTKEY = "<ctrl>+<shift>+s"
+HOTKEYS = ["<print_screen>", "<ctrl>+<shift>+s"]
 ```
 
 Other examples:
 - `"<print_screen>"` — Print Screen key
 - `"<ctrl>+<alt>+s"` — Ctrl+Alt+S
-
-## Auto-start on login
-
-```bash
-mkdir -p ~/.config/autostart
-cat > ~/.config/autostart/kapture.desktop << EOF
-[Desktop Entry]
-Type=Application
-Name=Kapture
-Exec=python3 /path/to/screenshot_tool.py
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-EOF
-```
 
 ## Features
 - Drag to select any region on screen

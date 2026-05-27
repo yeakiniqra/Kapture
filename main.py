@@ -39,8 +39,24 @@ log = logging.getLogger("kapture")
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
-HOTKEY = "<ctrl>+<shift>+s"               # Change to your preferred hotkey
+HOTKEYS = ["<print_screen>", "<ctrl>+<shift>+s"]   # All active hotkeys
 APP_NAME = "Kapture"
+VERSION  = "1.0.0"
+AUTHOR   = "Yeakin Iqra"
+
+# Human-readable hotkey string used in UI labels
+_HOTKEY_DISPLAY = " / ".join(HOTKEYS)
+
+
+# ─── RESOURCE PATH (dev + PyInstaller) ────────────────────────────────────────
+
+def resource_path(relative: str) -> str:
+    """
+    Return the absolute path to a bundled resource.
+    Works both when running from source and when packaged with PyInstaller.
+    """
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, relative)
 
 
 # ─── SIGNAL BRIDGE (cross-thread → Qt) ────────────────────────────────────────
@@ -486,10 +502,17 @@ class AnnotationWindow(QWidget):
         log.info("AnnotationWindow._save_to_file: opening dialog")
         ts = time.strftime("%Y%m%d_%H%M%S")
         default = os.path.expanduser(f"~/Pictures/kapture_{ts}.png")
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save Screenshot", default,
-            "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)"
-        )
+
+        # Create dialog explicitly so we can clear the inherited dark stylesheet
+        dlg = QFileDialog(None, "Save Screenshot", default,
+                          "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)")
+        dlg.setAcceptMode(QFileDialog.AcceptSave)
+        dlg.setStyleSheet("")   # use system default — no inherited dark theme
+        if dlg.exec_() == QFileDialog.Accepted:
+            files = dlg.selectedFiles()
+            path = files[0] if files else ""
+        else:
+            path = ""
         if path:
             log.info("AnnotationWindow._save_to_file: saving to %s", path)
             final = self._final_pixmap()
@@ -505,6 +528,75 @@ class AnnotationWindow(QWidget):
 
 class ScreenshotEngine:
     """Grabs a full virtual desktop screenshot."""
+
+    # Checked once at startup; None means not yet checked
+    _available_backend: str | None = None   # 'gnome-screenshot' | 'scrot' | 'qt' | ''
+
+    @staticmethod
+    def _detect_backend() -> str:
+        """Return the first available capture backend name."""
+        import shutil
+        for tool in ('gnome-screenshot', 'scrot'):
+            if shutil.which(tool):
+                log.debug("ScreenshotEngine._detect_backend: found %s", tool)
+                return tool
+        log.warning("ScreenshotEngine._detect_backend: no external tool found, will use Qt fallback")
+        return ''
+
+    @staticmethod
+    def check_and_warn():
+        """
+        Check for a screenshot backend and show a styled warning dialog
+        if none is installed.  Call once at startup.
+        """
+        backend = ScreenshotEngine._detect_backend()
+        ScreenshotEngine._available_backend = backend
+        if backend:
+            return  # All good
+
+        log.warning("ScreenshotEngine.check_and_warn: no backend found")
+        dlg = QMessageBox()
+        dlg.setWindowTitle(f"{APP_NAME} — Backend Missing")
+        dlg.setIcon(QMessageBox.Warning)
+        dlg.setTextFormat(Qt.RichText)
+        dlg.setText(
+            "<b>No screenshot backend found.</b><br><br>"
+            "Kapture needs <code>gnome-screenshot</code> or <code>scrot</code> "
+            "to capture your screen correctly.<br><br>"
+            "<b>Install one now:</b>"
+        )
+        dlg.setDetailedText(
+            "Ubuntu / Debian\n"
+            "───────────────\n"
+            "Option 1 (recommended for GNOME):\n"
+            "  sudo apt install gnome-screenshot\n\n"
+            "Option 2 (lightweight, works on any X11 desktop):\n"
+            "  sudo apt install scrot\n\n"
+            "After installing, restart Kapture."
+        )
+        dlg.setStyleSheet("""
+            QMessageBox {
+                background-color: #0d0d1a;
+                color: #e0e0ff;
+            }
+            QLabel {
+                color: #e0e0ff;
+                font-size: 13px;
+            }
+            QPushButton {
+                background: #1a1a2e; color: #e0e0ff;
+                border: 1px solid #00aeff55; border-radius: 5px;
+                padding: 4px 16px;
+            }
+            QPushButton:hover { background: #00aeff22; border-color: #00aeff; }
+            QTextEdit {
+                background: #11112a; color: #a0c4ff;
+                border: 1px solid #00aeff33; border-radius: 4px;
+                font-family: monospace; font-size: 12px;
+            }
+        """)
+        dlg.setStandardButtons(QMessageBox.Ok)
+        dlg.exec_()
 
     @staticmethod
     async def _try_tool(name: str, *cmd_args, tmpfile: str) -> bool:
@@ -588,7 +680,7 @@ class TrayApp(QSystemTrayIcon):
         self.annotation_win = None
 
         self._setup_menu()
-        self.setToolTip(f"{APP_NAME}\n{HOTKEY} to capture")
+        self.setToolTip(f"{APP_NAME}\n{_HOTKEY_DISPLAY} to capture")
         self.show()
 
         # Connect the cross-thread signal
@@ -597,12 +689,20 @@ class TrayApp(QSystemTrayIcon):
         # Start global hotkey listener
         self._start_hotkey_listener()
 
+        # Warn once if no capture backend is installed
+        ScreenshotEngine.check_and_warn()
+
         self._notify_ready()
         log.info("TrayApp.__init__: system tray ready")
 
     def _make_icon(self) -> QIcon:
-        log.debug("TrayApp._make_icon: building programmatic icon")
-        """Create a simple camera-style icon programmatically."""
+        log.debug("TrayApp._make_icon: loading icon from assets")
+        icon_file = resource_path(os.path.join('assets', 'icon.png'))
+        if os.path.isfile(icon_file):
+            log.debug("TrayApp._make_icon: found %s", icon_file)
+            return QIcon(icon_file)
+        # Fallback: simple programmatic icon
+        log.warning("TrayApp._make_icon: assets/icon.png not found, using fallback")
         pixmap = QPixmap(32, 32)
         pixmap.fill(Qt.transparent)
         p = QPainter(pixmap)
@@ -615,7 +715,7 @@ class TrayApp(QSystemTrayIcon):
         p.setBrush(QBrush(QColor(0, 174, 255, 180)))
         p.drawEllipse(13, 13, 6, 6)
         p.end()
-        log.debug("TrayApp._make_icon: icon created")
+        log.debug("TrayApp._make_icon: fallback icon created")
         return QIcon(pixmap)
 
     def _setup_menu(self):
@@ -639,7 +739,7 @@ class TrayApp(QSystemTrayIcon):
             }
         """)
 
-        capture_action = QAction(f"📷  Capture Region  ({HOTKEY})", self)
+        capture_action = QAction(f"📷  Capture Region  ({_HOTKEY_DISPLAY})", self)
         capture_action.triggered.connect(self._start_capture)
 
         about_action = QAction(f"ℹ️  About {APP_NAME}", self)
@@ -683,26 +783,28 @@ class TrayApp(QSystemTrayIcon):
         self.annotation_win = AnnotationWindow(cropped, region)
 
     def _start_hotkey_listener(self):
-        log.debug("TrayApp._start_hotkey_listener: registering hotkey '%s'", HOTKEY)
+        log.debug("TrayApp._start_hotkey_listener: registering hotkeys %s", HOTKEYS)
+
         def on_activate():
             log.info("TrayApp._start_hotkey_listener: hotkey fired")
             bridge.trigger_screenshot.emit()
 
-        def parse_hotkey(hk_str):
-            return keyboard.HotKey(
-                keyboard.HotKey.parse(hk_str),
-                on_activate
-            )
+        hotkeys = [
+            keyboard.HotKey(keyboard.HotKey.parse(hk), on_activate)
+            for hk in HOTKEYS
+        ]
 
-        hotkey = parse_hotkey(HOTKEY)
+        def on_press(k):
+            k = listener.canonical(k)
+            for hk in hotkeys:
+                hk.press(k)
 
-        def for_canonical(f):
-            return lambda k: f(listener.canonical(k))
+        def on_release(k):
+            k = listener.canonical(k)
+            for hk in hotkeys:
+                hk.release(k)
 
-        listener = keyboard.Listener(
-            on_press=for_canonical(hotkey.press),
-            on_release=for_canonical(hotkey.release)
-        )
+        listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         listener.daemon = True
         listener.start()
         log.info("TrayApp._start_hotkey_listener: listener started")
@@ -711,19 +813,33 @@ class TrayApp(QSystemTrayIcon):
         log.info("TrayApp._notify_ready: showing startup notification")
         self.showMessage(
             APP_NAME,
-            f"Running in background.\nPress {HOTKEY} to capture a region.",
+            f"Running in background.\nPress {_HOTKEY_DISPLAY} to capture a region.",
             QSystemTrayIcon.Information,
             3000
         )
 
     def _show_about(self):
         log.debug("TrayApp._show_about: opening about dialog")
-        QMessageBox.about(
-            None, f"About {APP_NAME}",
-            f"<b>{APP_NAME}</b> — Lightshot-style screenshot tool for Ubuntu<br><br>"
-            f"Hotkey: <code>{HOTKEY}</code><br><br>"
-            f"Built with PyQt5 + pynput"
+        import html
+        hotkeys_escaped = html.escape(_HOTKEY_DISPLAY)
+        dlg = QMessageBox()
+        dlg.setWindowTitle(f"About {APP_NAME}")
+        dlg.setTextFormat(Qt.RichText)
+        dlg.setIconPixmap(
+            QIcon(resource_path(os.path.join('assets', 'icon.png'))).pixmap(64, 64)
         )
+        dlg.setText(
+            f"<h2 style='margin:0'>{APP_NAME}</h2>"
+            f"<p style='color:#888; margin-top:2px'>Version {VERSION}</p>"
+            f"<p>A Lightshot-style screenshot tool for Linux.<br>"
+            f"Select any region, annotate, and save in seconds.</p>"
+            f"<p><b>Author:</b> {AUTHOR}<br>"
+            f"<b>Hotkeys:</b> <code>{hotkeys_escaped}</code><br>"
+            f"<b>License:</b> MIT</p>"
+            f"<p style='color:#888; font-size:11px'>Open source contributions welcome on GitHub.</p>"
+        )
+        dlg.setStandardButtons(QMessageBox.Ok)
+        dlg.exec_()
 
 
 # ─── ENTRY POINT ──────────────────────────────────────────────────────────────
@@ -733,6 +849,12 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setQuitOnLastWindowClosed(False)  # Stay alive in tray
+
+    # Set application-wide window icon (taskbar, alt-tab, dialogs)
+    icon_file = resource_path(os.path.join('assets', 'icon.png'))
+    if os.path.isfile(icon_file):
+        app.setWindowIcon(QIcon(icon_file))
+        log.debug("main: app icon set from %s", icon_file)
 
     if not QSystemTrayIcon.isSystemTrayAvailable():
         log.critical("main: system tray not available")

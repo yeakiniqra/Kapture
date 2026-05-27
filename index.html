@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kapture — Screenshot Tool for Ubuntu</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ── TOKENS ────────────────────────────────────────────────── */
+    :root {
+      --bg:           #F6F2EA;   /* warm parchment */
+      --bg-card:      #FDFCFA;
+      --bg-card-alt:  #F0EDE5;
+      --text:         #1A1714;
+      --text-mid:     #4A4540;
+      --text-muted:   #7A756E;
+      --primary:      #000080;   /* navy */
+      --primary-h:    #000066;
+      --primary-lt:   #EEEEFF;
+      --primary-bd:   #BBBCEE;
+      --border:       #DDD8CE;
+      --border-lt:    #EAE6DD;
+      --code-bg:      #0E0E18;
+      --code-bar:     #161625;
+      --code-border:  #252535;
+      --code-text:    #E2E2F0;
+      --code-comment: #6B6B8B;
+      --code-cmd:     #7DC4F0;
+      --code-flag:    #B4A5F8;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Ubuntu', sans-serif;
+      background-color: var(--bg);
+      /* vintage grain */
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23g)' opacity='0.042'/%3E%3C/svg%3E");
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ── NAV ───────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 200;
+      background: rgba(246, 242, 234, 0.88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 0 32px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 9px;
+      font-size: 19px; font-weight: 700;
+      color: var(--primary); text-decoration: none;
+      letter-spacing: -0.3px;
+    }
+    .nav-links { display: flex; gap: 28px; }
+    .nav-links a {
+      font-size: 14px; font-weight: 500;
+      color: var(--text-mid); text-decoration: none;
+      transition: color .18s;
+    }
+    .nav-links a:hover { color: var(--primary); }
+    .nav-cta {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: var(--primary); color: #fff;
+      border-radius: 7px; padding: 7px 18px;
+      font-family: 'Ubuntu', sans-serif;
+      font-size: 13px; font-weight: 600;
+      text-decoration: none;
+      transition: background .18s;
+    }
+    .nav-cta:hover { background: var(--primary-h); }
+
+    /* ── HERO ──────────────────────────────────────────────────── */
+    .hero {
+      max-width: 1040px; margin: 0 auto;
+      padding: 88px 32px 64px;
+      text-align: center;
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--primary-lt);
+      color: var(--primary);
+      border: 1px solid var(--primary-bd);
+      border-radius: 100px;
+      padding: 4px 14px;
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 1.2px; text-transform: uppercase;
+      margin-bottom: 28px;
+    }
+    .hero h1 {
+      font-size: 54px; font-weight: 700;
+      line-height: 1.12; letter-spacing: -2px;
+      color: var(--text); margin-bottom: 20px;
+    }
+    .hero h1 em {
+      font-style: normal; color: var(--primary);
+      /* subtle underline decoration — vintage feel */
+      text-decoration: underline;
+      text-decoration-color: rgba(0,0,128,.22);
+      text-underline-offset: 6px;
+    }
+    .hero-sub {
+      font-size: 18px; font-weight: 300;
+      color: var(--text-mid);
+      max-width: 540px; margin: 0 auto 40px;
+      line-height: 1.75;
+    }
+    .hero-actions {
+      display: flex; gap: 12px;
+      justify-content: center; flex-wrap: wrap;
+    }
+
+    /* ── BUTTONS ───────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      border-radius: 8px; padding: 11px 26px;
+      font-family: 'Ubuntu', sans-serif;
+      font-weight: 600; font-size: 15px;
+      text-decoration: none; cursor: pointer; border: none;
+      transition: all .18s; white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--primary); color: #fff;
+      box-shadow: 0 2px 10px rgba(0,0,128,.22);
+    }
+    .btn-primary:hover {
+      background: var(--primary-h);
+      box-shadow: 0 4px 16px rgba(0,0,128,.3);
+      transform: translateY(-1px);
+    }
+    .btn-outline {
+      background: transparent; color: var(--text);
+      border: 1.5px solid var(--border);
+    }
+    .btn-outline:hover {
+      border-color: var(--primary); color: var(--primary);
+      background: var(--primary-lt);
+    }
+
+    /* ── SEPARATOR ─────────────────────────────────────────────── */
+    .sep {
+      max-width: 1040px; margin: 0 auto; padding: 0 32px;
+    }
+    .sep hr {
+      border: none;
+      border-top: 1px dashed var(--border);
+    }
+
+    /* ── SECTION WRAPPER ───────────────────────────────────────── */
+    .section {
+      max-width: 1040px; margin: 0 auto;
+      padding: 64px 32px;
+    }
+    .section-eyebrow {
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 2px; text-transform: uppercase;
+      color: var(--primary); margin-bottom: 10px;
+    }
+    .section-title {
+      font-size: 32px; font-weight: 700;
+      letter-spacing: -.7px; margin-bottom: 8px;
+    }
+    .section-desc {
+      font-size: 16px; font-weight: 300;
+      color: var(--text-mid); margin-bottom: 40px;
+      max-width: 540px;
+    }
+
+    /* ── FEATURES GRID ─────────────────────────────────────────── */
+    .feat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+    .feat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-lt);
+      border-radius: 12px; padding: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+      transition: box-shadow .18s, transform .18s;
+    }
+    .feat-card:hover {
+      box-shadow: 0 6px 20px rgba(0,0,128,.07);
+      transform: translateY(-2px);
+    }
+    .feat-icon {
+      width: 40px; height: 40px;
+      background: var(--primary-lt);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--primary); margin-bottom: 16px;
+    }
+    .feat-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+    .feat-card p  { font-size: 13px; color: var(--text-muted); line-height: 1.55; }
+
+    /* ── INSTALL ───────────────────────────────────────────────── */
+    .install-layout {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 52px; align-items: start;
+    }
+
+    /* steps */
+    .steps { display: flex; flex-direction: column; gap: 36px; }
+    .step  { display: grid; grid-template-columns: 44px 1fr; gap: 18px; align-items: start; }
+    .step-num {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: var(--primary); color: #fff;
+      font-weight: 700; font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0,0,128,.25);
+    }
+    .step-body h3 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+    .step-body > p { font-size: 14px; color: var(--text-muted); margin-bottom: 14px; }
+
+    /* terminal block */
+    .term {
+      background: var(--code-bg);
+      border: 1px solid var(--code-border);
+      border-radius: 10px; overflow: hidden;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      box-shadow: 0 4px 18px rgba(0,0,0,.18);
+      margin-bottom: 12px;
+    }
+    .term-bar {
+      background: var(--code-bar);
+      padding: 9px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--code-border);
+    }
+    .term-dots { display: flex; gap: 6px; }
+    .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .dot-r { background: #FF5F56; }
+    .dot-y { background: #FFBD2E; }
+    .dot-g { background: #27C93F; }
+    .term-label { font-size: 12px; color: #5A5A7A; font-family: 'Ubuntu', sans-serif; }
+    .copy-btn {
+      background: transparent; border: none;
+      color: #5A5A7A; cursor: pointer;
+      padding: 4px 6px; border-radius: 5px;
+      display: flex; align-items: center;
+      transition: color .15s, background .15s;
+    }
+    .copy-btn:hover { color: #fff; background: #2A2A42; }
+    .term-code {
+      padding: 15px 18px;
+      font-size: 13px; line-height: 1.85;
+      color: var(--code-text); overflow-x: auto;
+    }
+    .cm  { color: var(--code-comment); }
+    .cd  { color: var(--code-cmd); }
+    .fl  { color: var(--code-flag); }
+
+    /* note pill */
+    .note {
+      background: var(--primary-lt);
+      border-left: 3px solid var(--primary);
+      border-radius: 0 8px 8px 0;
+      padding: 10px 14px;
+      font-size: 13px; color: var(--primary);
+      display: flex; align-items: flex-start; gap: 9px;
+    }
+    .note svg { flex-shrink: 0; margin-top: 1px; }
+
+    /* sidebar cards */
+    .side-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-lt);
+      border-radius: 12px; padding: 22px 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.04);
+      margin-bottom: 18px;
+    }
+    .side-card h3 {
+      font-size: 15px; font-weight: 600;
+      margin-bottom: 10px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .side-card p { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+    .req-list { list-style: none; }
+    .req-list li {
+      font-size: 13px; color: var(--text-mid);
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border-lt);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .req-list li:last-child { border: none; }
+    .req-list svg { color: var(--primary); flex-shrink: 0; }
+
+    /* ── FOOTER ────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 28px 32px;
+    }
+    .footer-inner {
+      max-width: 1040px; margin: 0 auto;
+      display: flex; align-items: center;
+      justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    }
+    footer p { font-size: 13px; color: var(--text-muted); }
+    footer a { color: var(--primary); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── RESPONSIVE ────────────────────────────────────────────── */
+    @media (max-width: 820px) {
+      .install-layout { grid-template-columns: 1fr; }
+      .feat-grid { grid-template-columns: 1fr 1fr; }
+      .hero h1 { font-size: 38px; letter-spacing: -1px; }
+      .hero-sub { font-size: 16px; }
+    }
+    @media (max-width: 560px) {
+      .feat-grid { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+      .hero h1 { font-size: 30px; }
+      nav .nav-inner { padding: 0 18px; }
+      .section, .hero { padding-left: 18px; padding-right: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── NAV ─────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-inner">
+    <a href="#" class="logo">
+      <img src="assets/icon.png" width="28" height="28" alt="Kapture" style="border-radius:6px;">
+      Kapture
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/yeakiniqra/Kapture" target="_blank">GitHub</a>
+    </div>
+    <a href="https://github.com/yeakiniqra/Kapture/releases/tag/v1.0.0" class="nav-cta">
+      <!-- heroicons: arrow-down-tray -->
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+      Download v1.0.0
+    </a>
+  </div>
+</nav>
+
+<!-- ── HERO ─────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="badge">
+    <!-- heroicons: tag -->
+    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z" />
+      <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6Z" />
+    </svg>
+    v1.0.0 — Now Available
+  </div>
+
+  <h1>Capture. Annotate.<br><em>Save instantly.</em></h1>
+  <p class="hero-sub">A Lightshot-style screenshot tool built for Ubuntu. Select any region on screen, mark it up with pen, arrows &amp; shapes, then save or copy in one click.</p>
+
+  <div class="hero-actions">
+    <a href="https://github.com/yeakiniqra/Kapture/releases/tag/v1.0.0" class="btn btn-primary">
+      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+      Download .deb (v1.0.0)
+    </a>
+    <a href="https://github.com/yeakiniqra/Kapture" target="_blank" class="btn btn-outline">
+      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />
+      </svg>
+      View on GitHub
+    </a>
+  </div>
+</section>
+
+<div class="sep"><hr></div>
+
+<!-- ── FEATURES ─────────────────────────────────────────────────── -->
+<section class="section" id="features">
+  <p class="section-eyebrow">What it does</p>
+  <h2 class="section-title">Everything you need. Nothing you don't.</h2>
+  <p class="section-desc">Runs silently in your system tray and gets out of the way until you need it.</p>
+
+  <div class="feat-grid">
+
+    <div class="feat-card">
+      <div class="feat-icon">
+        <!-- heroicons: viewfinder-circle -->
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3.75H6A2.25 2.25 0 0 0 3.75 6v1.5M16.5 3.75H18A2.25 2.25 0 0 1 20.25 6v1.5m0 9V18A2.25 2.25 0 0 1 18 20.25h-1.5m-9 0H6A2.25 2.25 0 0 1 3.75 18v-1.5M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+        </svg>
+      </div>
+      <h3>Region Selection</h3>
+      <p>Click and drag to select any area on screen with pixel-precise crosshair and a live size indicator.</p>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon">
+        <!-- heroicons: pencil -->
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+        </svg>
+      </div>
+      <h3>Annotation Tools</h3>
+      <p>Freehand pen, directional arrows, rectangles, and a full color picker in a draggable toolbar.</p>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon">
+        <!-- heroicons: clipboard-document -->
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
+        </svg>
+      </div>
+      <h3>Auto Clipboard</h3>
+      <p>Captured region copies to clipboard instantly on mouse release — no extra steps needed.</p>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon">
+        <!-- heroicons: arrow-down-tray -->
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        </svg>
+      </div>
+      <h3>Save as PNG / JPG</h3>
+      <p>Export annotated screenshots to any folder with one click via a native save dialog.</p>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon">
+        <!-- heroicons: computer-desktop -->
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0H3" />
+        </svg>
+      </div>
+      <h3>System Tray</h3>
+      <p>Runs silently in the background — zero window clutter until you trigger a capture.</p>
+    </div>
+
+    <div class="feat-card">
+      <div class="feat-icon">
+        <!-- heroicons: command-line -->
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" />
+        </svg>
+      </div>
+      <h3>Global Hotkeys</h3>
+      <p>Trigger from any app with <strong>Print Screen</strong> or <strong>Ctrl+Shift+S</strong> — fully customisable.</p>
+    </div>
+
+  </div>
+</section>
+
+<div class="sep"><hr></div>
+
+<!-- ── INSTALL ───────────────────────────────────────────────────── -->
+<section class="section" id="install">
+  <p class="section-eyebrow">Get started</p>
+  <h2 class="section-title">Install in 3 steps.</h2>
+  <p class="section-desc">No Python. No terminal wizardry required. Download once, done.</p>
+
+  <div class="install-layout">
+
+    <!-- LEFT: steps -->
+    <div class="steps">
+
+      <!-- Step 1 -->
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h3>Install a capture backend</h3>
+          <p>Kapture relies on a small system tool to take flicker-free screenshots without the dark overlay bug.</p>
+
+          <div class="term">
+            <div class="term-bar">
+              <div class="term-dots">
+                <div class="dot dot-r"></div>
+                <div class="dot dot-y"></div>
+                <div class="dot dot-g"></div>
+              </div>
+              <span class="term-label">Terminal</span>
+              <button class="copy-btn" onclick="copyTerm(this)" title="Copy">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              </button>
+            </div>
+            <div class="term-code"><span class="cd">sudo</span> apt install gnome-screenshot</div>
+          </div>
+
+          <div class="note">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+            </svg>
+            You only need <strong>one</strong>. If unsure, pick <strong>gnome-screenshot</strong>.
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h3>Download &amp; install the .deb</h3>
+          <p>Grab the latest release from GitHub, then install it — just like VS Code or Discord.</p>
+
+          <div class="term">
+            <div class="term-bar">
+              <div class="term-dots">
+                <div class="dot dot-r"></div>
+                <div class="dot dot-y"></div>
+                <div class="dot dot-g"></div>
+              </div>
+              <span class="term-label">Terminal</span>
+              <button class="copy-btn" onclick="copyTerm(this)" title="Copy">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              </button>
+            </div>
+            <div class="term-code">
+<span class="cd">sudo</span> dpkg -i kapture_1.0.0_amd64.deb</div>
+          </div>
+
+          <div class="note">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+            </svg>
+            Prefer GUI? <strong>Double-click</strong> the .deb — opens in GNOME Software / GDebi.
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h3>Launch &amp; capture</h3>
+          <p>Search <strong>Kapture</strong> in your app launcher — or press a hotkey from anywhere to start immediately.</p>
+
+          <div class="term">
+            <div class="term-bar">
+              <div class="term-dots">
+                <div class="dot dot-r"></div>
+                <div class="dot dot-y"></div>
+                <div class="dot dot-g"></div>
+              </div>
+              <span class="term-label">Hotkeys</span>
+              <span></span>
+            </div>
+            <div class="term-code">
+<span class="cm"># Press either hotkey from any application:</span>
+<span class="fl">Print Screen</span>
+
+<span class="cm"># — or —</span>
+<span class="fl">Ctrl</span> + <span class="fl">Shift</span> + <span class="fl">S</span></div>
+          </div>
+
+          <div class="note">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            The app runs silently in the system tray after launch — no window, no clutter.
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /steps -->
+
+    <!-- RIGHT: sidebar -->
+    <div>
+
+      <div class="side-card">
+        <h3>
+          <!-- heroicons: check-badge -->
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="var(--primary)">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" />
+          </svg>
+          System Requirements
+        </h3>
+        <ul class="req-list">
+          <li>
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+            Ubuntu 20.04 or later
+          </li>
+          <li>
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+            64-bit Intel or AMD processor
+          </li>
+          <li>
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+            GNOME, X11, or Xfce desktop
+          </li>
+          <li>
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+            <code>gnome-screenshot</code> or <code>scrot</code>
+          </li>
+        </ul>
+      </div>
+
+      <div class="side-card">
+        <h3>
+          <!-- heroicons: trash -->
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="var(--primary)">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+          </svg>
+          Uninstall
+        </h3>
+        <div class="term">
+          <div class="term-bar">
+            <div class="term-dots">
+              <div class="dot dot-r"></div>
+              <div class="dot dot-y"></div>
+              <div class="dot dot-g"></div>
+            </div>
+            <span class="term-label">Terminal</span>
+            <button class="copy-btn" onclick="copyTerm(this)" title="Copy">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            </button>
+          </div>
+          <div class="term-code">
+<span class="cd">sudo</span> apt remove kapture</div>
+        </div>
+      </div>
+
+      <div class="side-card">
+        <h3>
+          <!-- heroicons: code-bracket -->
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="var(--primary)">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5" />
+          </svg>
+          Open Source
+        </h3>
+        <p style="margin-bottom: 14px;">MIT licensed. Contributions, issues, and pull requests are welcome on GitHub.</p>
+        <a href="https://github.com/yeakiniqra/Kapture" target="_blank" class="btn btn-outline" style="font-size:13px; padding:8px 16px;">
+          <!-- heroicons: arrow-top-right-on-square -->
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+          </svg>
+          github.com/yeakiniqra/Kapture
+        </a>
+      </div>
+
+    </div><!-- /sidebar -->
+
+  </div><!-- /install-layout -->
+</section>
+
+<!-- ── FOOTER ────────────────────────────────────────────────────── -->
+<footer>
+  <div class="footer-inner">
+    <a href="#" class="logo" style="font-size:16px; color:var(--primary);">
+      <img src="assets/icon.png" width="24" height="24" alt="Kapture" style="border-radius:5px;">
+      Kapture
+    </a>
+    <p>&copy; 2026 <a href="https://github.com/yeakiniqra" target="_blank">Yeakin Iqra</a>. Released under the MIT License.</p>
+    <a href="https://github.com/yeakiniqra/Kapture/releases/tag/v1.0.0" class="btn btn-primary" style="font-size:13px; padding:8px 20px;">
+      Download v1.0.0
+    </a>
+  </div>
+</footer>
+
+<script>
+  function copyTerm(btn) {
+    const code = btn.closest('.term').querySelector('.term-code');
+    if (!code) return;
+    navigator.clipboard.writeText(code.innerText.trim()).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="#27C93F"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>';
+      setTimeout(() => btn.innerHTML = orig, 2000);
+    });
+  }
+</script>
+
+</body>
+</html>

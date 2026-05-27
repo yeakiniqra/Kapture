@@ -1,3 +1,6 @@
+<img width="1536" height="1024" alt="header" src="https://github.com/user-attachments/assets/d83bd964-ec6c-4bb8-9fd1-9ad5480579b2" />
+
+
 # Kapture — Lightshot-style screenshot tool for Ubuntu
 
 ## Installation

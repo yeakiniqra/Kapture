@@ -30,7 +30,7 @@ sudo apt install scrot
 
 **Step 2 — Download the .deb**
 
-Go to the [Releases page](https://github.com/yeakin-iqra/kapture/releases) and download the latest `kapture_X.X.X_amd64.deb` file.
+Go to the [Releases page](https://github.com/yeakiniqra/Kapture/releases/tag/v1.0.0) and download `kapture_1.0.0_amd64.deb`.
 
 ---
 
@@ -68,7 +68,7 @@ sudo apt remove kapture
 **Step 1 — Clone the repository**
 
 ```bash
-git clone https://github.com/yeakin-iqra/kapture.git
+git clone https://github.com/yeakiniqra/Kapture.git
 cd kapture
 ```
 
@@ -155,7 +155,7 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Commit your changes (`git commit -m 'Add my feature'`)
 4. Push to the branch (`git push origin feature/my-feature`)
-5. Open a Pull Request
+5. [Open a Pull Request](https://github.com/yeakiniqra/Kapture/pulls)
 
 ## License
 

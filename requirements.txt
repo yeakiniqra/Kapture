@@ -1,20 +1,22 @@
-altgraph==0.17.5
-certifi==2026.5.20
-charset-normalizer==3.4.7
-evdev==1.9.3
-idna==3.16
-mss==10.2.0
-packaging==26.2
-pillow==12.2.0
-pyinstaller==6.20.0
-pyinstaller-hooks-contrib==2026.5
-pynput==1.8.2
+# ── Kapture runtime dependencies ──────────────────────────────────────────────
+# GUI + native capture (QtDBus, used for the Wayland portal, ships inside PyQt5).
 PyQt5==5.15.11
 PyQt5-Qt5==5.15.19
 PyQt5_sip==12.18.0
-python-xlib==0.33
+# asyncio <-> Qt event-loop bridge.
 qasync==0.28.0
-requests==2.34.2
+# Global hotkeys (pynput pulls in python-xlib / evdev on Linux).
+pynput==1.8.2
+python-xlib==0.33
+evdev==1.9.3
+
+# ── Packaging (build_deb.sh / PyInstaller) ────────────────────────────────────
+pyinstaller==6.20.0
+pyinstaller-hooks-contrib==2026.5
+altgraph==0.17.5
+packaging==26.2
 setuptools==82.0.1
 six==1.17.0
-urllib3==2.7.0
+
+# NOTE: `mss` and `pillow` were removed in v2.0 — the old external-tool capture
+# path is gone; capture is now QScreen.grabWindow (X11) + XDG portal (Wayland).

@@ -11,33 +11,17 @@ Just like installing Discord or VS Code — one file, done. No Python or termina
 
 > **Compatible with:** Ubuntu 20.04 and later, on any 64-bit Intel or AMD processor (`amd64`).
 
----
-
-**Step 1 — Install a screen capture backend**
-
-Kapture needs one of these system tools to take screenshots. Open a terminal and run:
-
-```bash
-sudo apt install gnome-screenshot
-```
-
-If that's not available, use the fallback:
-
-```bash
-sudo apt install scrot
-```
-
-> You only need one. `gnome-screenshot` is preferred — it gives the most accurate results.
+> **No screenshot tools to install.** Kapture v2 captures natively — there's nothing extra to set up. On **X11** it works out of the box; on **Wayland** it uses the built-in XDG desktop portal, which ships by default on Ubuntu's GNOME and KDE sessions.
 
 ---
 
-**Step 2 — Download the .deb**
+**Step 1 — Download the .deb**
 
-Go to the [Releases page](https://github.com/yeakiniqra/Kapture/releases/tag/v1.0.0) and download `kapture_1.0.0_amd64.deb`.
+Go to the [Releases page](https://github.com/yeakiniqra/Kapture/releases/tag/v2.0.0) and download `kapture_2.0.0_amd64.deb`.
 
 ---
 
-**Step 3 — Install**
+**Step 2 — Install**
 
 **Option A — Double-click** the downloaded `.deb` file in your file manager.  
 It will open in GNOME Software / GDebi. Click **Install** and enter your password.
@@ -45,16 +29,21 @@ It will open in GNOME Software / GDebi. Click **Install** and enter your passwor
 **Option B — Terminal**
 
 ```bash
-sudo dpkg -i kapture_1.0.0_amd64.deb
+sudo dpkg -i kapture_2.0.0_amd64.deb
+# if apt reports missing dependencies, pull them in with:
+sudo apt -f install
 ```
 
 ---
 
-**Step 4 — Launch**
+**Step 3 — Launch**
 
 Search for **Kapture** in your app launcher, or run `kapture` in a terminal.
 
-The app starts silently in the system tray. Press `Print Screen` or `Ctrl+Shift+S` to take a screenshot.
+The app starts silently in the system tray. Press `Print Screen` or `Ctrl+Shift+S` to take a screenshot — the capture is instant and uses no external tools.
+
+> **GNOME Wayland users — one-time step for flash-free capture.**
+> On GNOME's Wayland session the system screenshot portal always plays a shutter flash and asks for permission — that's an OS limitation no normal app can bypass. Kapture ships a tiny **GNOME Shell extension** that captures from inside the Shell with **no flash and no prompt**. The `.deb` installs and registers it automatically; just **log out and back in once** after installing to activate it. Until then, captures fall back to the portal (with the flash). On an **X11/Xorg** session no extension is needed — capture is already instant and flash-free.
 
 ---
 
@@ -88,19 +77,20 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**Step 4 — Install a screen capture backend**
+> No screenshot backend to install — capture is handled in-process by Qt (X11) and the XDG desktop portal (Wayland).
 
-```bash
-sudo apt install gnome-screenshot   # preferred
-# or
-sudo apt install scrot               # fallback
-```
-
-**Step 5 — Run**
+**Step 4 — Run**
 
 ```bash
 python3 main.py
 ```
+
+> **GNOME Wayland (running from source):** the flash-free Shell extension is bundled only in the `.deb`. To get flash-free capture during development, install it into your user dir once and log out/in:
+> ```bash
+> cp -r "extension/kapture-screenshot@yeakiniqra.github.io" ~/.local/share/gnome-shell/extensions/
+> gnome-extensions enable kapture-screenshot@yeakiniqra.github.io   # after re-login
+> ```
+> Without it, source runs fall back to the portal (with the flash).
 
 ---
 
@@ -114,7 +104,7 @@ sudo apt install dpkg-dev
 bash build_deb.sh
 ```
 
-Output: `kapture_1.0.0_amd64.deb` — ready to share or install.
+Output: `kapture_2.0.0_amd64.deb` — ready to share or install.
 
 ## Usage
 
@@ -148,7 +138,8 @@ Other examples:
 - Save annotated screenshot as PNG
 - Draggable toolbar with remembered last position
 - Runs silently in the system tray
-- asyncio-based capture using gnome-screenshot or scrot (no overlay darkening)
+- **Native capture pipeline — no external screenshot tools.** Instant `QScreen` grab on X11; on GNOME Wayland a bundled GNOME Shell extension captures **flash-free and prompt-free**, with the XDG desktop portal as the automatic fallback
+- Ships a small GNOME Shell extension (`kapture-screenshot@yeakiniqra.github.io`) installed and registered by the `.deb`; activate with one log out/in
 
 ## Contributing
 

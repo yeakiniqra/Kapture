@@ -41,6 +41,14 @@ install -m 755 "${BINARY_SRC}" "${DEB_DIR}/usr/bin/${PKG_NAME}"
 install -m 644 "${ICON_SRC}" "${DEB_DIR}/usr/share/icons/hicolor/256x256/apps/${PKG_NAME}.png"
 install -m 644 "${ICON_SRC}" "${DEB_DIR}/usr/share/pixmaps/${PKG_NAME}.png"
 
+# GNOME Shell extension — flash-free, prompt-free capture on Wayland.
+EXT_UUID="kapture-screenshot@yeakiniqra.github.io"
+EXT_SRC="extension/${EXT_UUID}"
+EXT_DEST="${DEB_DIR}/usr/share/gnome-shell/extensions/${EXT_UUID}"
+mkdir -p "${EXT_DEST}"
+install -m 644 "${EXT_SRC}/metadata.json" "${EXT_DEST}/metadata.json"
+install -m 644 "${EXT_SRC}/extension.js"  "${EXT_DEST}/extension.js"
+
 # Desktop entry (shows Kapture in the app menu / launcher)
 cat > "${DEB_DIR}/usr/share/applications/${PKG_NAME}.desktop" << EOF
 [Desktop Entry]
@@ -53,22 +61,40 @@ Exec=kapture
 Icon=kapture
 Categories=Graphics;Utility;
 Keywords=screenshot;capture;annotation;snip;
+Terminal=false
 StartupNotify=false
 EOF
 
+# Installed-Size (KiB) — computed from the staged tree, excluding control files.
+INSTALLED_SIZE=$(du -sk --exclude=DEBIAN "${DEB_DIR}" | cut -f1)
+
 # DEBIAN/control — package metadata
+#
+# Depends: Qt's xcb platform plugin dynamically loads these system libs; they are
+# NOT bundled by PyInstaller, so declaring them turns a silent "could not load the
+# Qt platform plugin xcb" crash into a clean apt dependency error. All ship by
+# default on desktop Ubuntu.
+# Recommends: native Wayland capture uses the XDG desktop portal (present by
+# default on GNOME/KDE); grim is only needed on wlroots compositors. No
+# gnome-screenshot/scrot — Kapture v2 captures in-process.
 cat > "${DEB_DIR}/DEBIAN/control" << EOF
 Package: ${PKG_NAME}
 Version: ${VERSION}
 Section: graphics
 Priority: optional
 Architecture: ${ARCH}
-Recommends: gnome-screenshot | scrot
 Maintainer: ${MAINTAINER}
+Installed-Size: ${INSTALLED_SIZE}
+Depends: libc6, libxcb-xinerama0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-cursor0, libfontconfig1, libegl1
+Recommends: xdg-desktop-portal-gnome | xdg-desktop-portal | grim
+Homepage: https://github.com/yeakiniqra/Kapture
 Description: ${DESCRIPTION}
  Kapture is a Lightshot-style region screenshot tool for Ubuntu.
  Features annotation tools (pen, arrow, rectangle), auto clipboard copy,
  and saves annotated screenshots as PNG. Runs silently in the system tray.
+ .
+ Captures natively with no external screenshot tools: an instant QScreen grab
+ on X11 and the XDG desktop portal on Wayland.
  .
  Activate with Print Screen or Ctrl+Shift+S.
 EOF
@@ -77,11 +103,13 @@ EOF
 cat > "${DEB_DIR}/DEBIAN/postinst" << 'POSTINST'
 #!/bin/bash
 set -e
-if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-    gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
-fi
-if command -v update-desktop-database >/dev/null 2>&1; then
-    update-desktop-database /usr/share/applications 2>/dev/null || true
+if [ "$1" = "configure" ]; then
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache -f -t /usr/share/icons/hicolor 2>/dev/null || true
+    fi
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database /usr/share/applications 2>/dev/null || true
+    fi
 fi
 POSTINST
 chmod 755 "${DEB_DIR}/DEBIAN/postinst"
@@ -90,8 +118,10 @@ chmod 755 "${DEB_DIR}/DEBIAN/postinst"
 cat > "${DEB_DIR}/DEBIAN/prerm" << 'PRERM'
 #!/bin/bash
 set -e
-# Kill any running instance before uninstalling
-pkill -x kapture 2>/dev/null || true
+# Kill any running instance before removal/upgrade
+if [ "$1" = "remove" ] || [ "$1" = "upgrade" ]; then
+    pkill -x kapture 2>/dev/null || true
+fi
 PRERM
 chmod 755 "${DEB_DIR}/DEBIAN/prerm"
 

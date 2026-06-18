@@ -49,7 +49,7 @@ log = logging.getLogger("kapture")
 
 HOTKEYS = ["<print_screen>", "<ctrl>+<shift>+s"]   # All active hotkeys
 APP_NAME = "Kapture"
-VERSION  = "3.0.0"
+VERSION  = "3.0.1"
 AUTHOR   = "Yeakin Iqra"
 
 # Per-user single-instance / remote-trigger socket name.
@@ -59,6 +59,9 @@ _IPC_NAME = f"kapture-{os.getuid()}" if hasattr(os, "getuid") else "kapture"
 # ─── USER SETTINGS (persisted to ~/.config/kapture/config.json) ───────────────
 
 _CONFIG_PATH = os.path.expanduser("~/.config/kapture/config.json")
+# Where we stash GNOME's original screenshot keybindings before we steal `Print`,
+# so we can hand them back when Kapture's hotkey changes or the app is removed.
+_GNOME_SS_BACKUP = os.path.expanduser("~/.config/kapture/gnome_screenshot_backup.json")
 _CONFIG_DEFAULTS = {
     "save_dir": os.path.expanduser("~/Pictures"),
     "auto_save": False,                 # Save without showing the file dialog
@@ -2135,23 +2138,97 @@ class TrayApp(QSystemTrayIcon):
         cls._gs_set([schema, "command", command])
         cls._gs_set([schema, "binding", binding])
 
+    # GNOME's own screenshot accelerators that can collide with `Print`.
+    _GNOME_SS_KEYS = ("show-screenshot-ui", "screenshot", "screenshot-window")
+
+    @staticmethod
+    def _parse_gs_list(raw):
+        """Parse a gsettings 'as' value ('@as []', "['Print']") into a list."""
+        import ast
+        raw = (raw or "").strip()
+        if raw.startswith("@as"):
+            raw = raw[raw.find("["):]
+        try:
+            return list(ast.literal_eval(raw)) if raw.startswith("[") else []
+        except (ValueError, SyntaxError):
+            return []
+
+    @staticmethod
+    def _fmt_gs_list(vals):
+        return "[" + ", ".join("'%s'" % v for v in vals) + "]"
+
+    @classmethod
+    def _backup_gnome_screenshot(cls):
+        """Save GNOME's current screenshot keybindings once, before we touch them,
+        so they can be restored later. Never overwrites an existing backup (that
+        would capture our own already-emptied values)."""
+        if os.path.exists(_GNOME_SS_BACKUP):
+            return
+        import json
+        snapshot = {}
+        for key in cls._GNOME_SS_KEYS:
+            try:
+                snapshot[key] = cls._parse_gs_list(
+                    cls._gs_get(["org.gnome.shell.keybindings", key]))
+            except Exception as e:
+                log.debug("_backup_gnome_screenshot: %s (%s)", key, e)
+        try:
+            os.makedirs(os.path.dirname(_GNOME_SS_BACKUP), exist_ok=True)
+            with open(_GNOME_SS_BACKUP, "w") as f:
+                json.dump(snapshot, f, indent=2)
+            log.info("_backup_gnome_screenshot: saved %s", snapshot)
+        except OSError as e:
+            log.debug("_backup_gnome_screenshot: %s", e)
+
     @classmethod
     def _free_gnome_print(cls):
         """Remove 'Print' from GNOME's own screenshot keybindings so our custom
-        binding takes effect (GNOME 42+ binds the screenshot UI to Print)."""
-        import ast
-        for key in ("show-screenshot-ui", "screenshot"):
+        binding takes effect (GNOME 42+ binds the screenshot UI to Print).
+        Backs the originals up first so they can be restored."""
+        cls._backup_gnome_screenshot()
+        for key in cls._GNOME_SS_KEYS:
             try:
-                raw = cls._gs_get(["org.gnome.shell.keybindings", key])
-                if "Print" not in raw:
+                vals = cls._parse_gs_list(
+                    cls._gs_get(["org.gnome.shell.keybindings", key]))
+                if "Print" not in vals:
                     continue
-                vals = ast.literal_eval(raw) if raw.startswith("[") else []
                 vals = [v for v in vals if v != "Print"]
                 cls._gs_set(["org.gnome.shell.keybindings", key,
-                             "[" + ", ".join("'%s'" % v for v in vals) + "]"])
+                             cls._fmt_gs_list(vals)])
                 log.info("_free_gnome_print: removed Print from %s", key)
             except Exception as e:
                 log.debug("_free_gnome_print: %s (%s)", key, e)
+
+    @classmethod
+    def _restore_gnome_screenshot(cls):
+        """Give GNOME its screenshot keybindings back. Restores the saved backup
+        if present, otherwise falls back to GNOME's factory defaults. Called when
+        Kapture stops owning `Print` (hotkey changed away, or on uninstall)."""
+        import json
+        # GNOME factory defaults — the safety net when no backup exists.
+        defaults = {
+            "show-screenshot-ui": ["Print"],
+            "screenshot": ["<Shift>Print"],
+            "screenshot-window": ["<Alt>Print"],
+        }
+        snapshot = None
+        try:
+            with open(_GNOME_SS_BACKUP) as f:
+                snapshot = json.load(f)
+        except (OSError, ValueError):
+            snapshot = None
+        restore = snapshot if isinstance(snapshot, dict) and snapshot else defaults
+        for key, vals in restore.items():
+            try:
+                cls._gs_set(["org.gnome.shell.keybindings", key,
+                             cls._fmt_gs_list(vals)])
+                log.info("_restore_gnome_screenshot: %s -> %s", key, vals)
+            except Exception as e:
+                log.debug("_restore_gnome_screenshot: %s (%s)", key, e)
+        try:
+            os.remove(_GNOME_SS_BACKUP)
+        except OSError:
+            pass
 
     def _maybe_setup_shortcuts(self):
         """Run the GNOME shortcut setup once per machine (stamped)."""
@@ -2207,6 +2284,9 @@ class TrayApp(QSystemTrayIcon):
                 "kapture", "Kapture — Capture", self._launch_command(), binding)
             if binding == "Print":
                 self._free_gnome_print()
+            else:
+                # We no longer own Print — hand GNOME's screenshot keys back.
+                self._restore_gnome_screenshot()
             log.info("TrayApp._apply_capture_binding: %s", binding)
         except Exception as e:
             log.warning("TrayApp._apply_capture_binding: %s", e)

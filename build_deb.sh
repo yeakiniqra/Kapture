@@ -115,12 +115,56 @@ POSTINST
 chmod 755 "${DEB_DIR}/DEBIAN/postinst"
 
 # DEBIAN/prerm — clean up before uninstall
+#
+# On full removal we also hand GNOME's screenshot keybindings back to every user
+# Kapture borrowed `Print` from. Kapture stashes the originals in the user's
+# config when it steals the key; here we restore them (or GNOME's factory
+# defaults) from inside that user's session bus. All best-effort — never blocks
+# removal.
 cat > "${DEB_DIR}/DEBIAN/prerm" << 'PRERM'
 #!/bin/bash
 set -e
 # Kill any running instance before removal/upgrade
 if [ "$1" = "remove" ] || [ "$1" = "upgrade" ]; then
     pkill -x kapture 2>/dev/null || true
+fi
+
+if [ "$1" = "remove" ]; then
+    for home in /home/*; do
+        [ -d "$home" ] || continue
+        user=$(basename "$home")
+        id "$user" >/dev/null 2>&1 || continue
+        backup="$home/.config/kapture/gnome_screenshot_backup.json"
+        [ -f "$backup" ] || continue
+        uid=$(id -u "$user")
+        command -v runuser >/dev/null 2>&1 || continue
+        command -v python3 >/dev/null 2>&1 || continue
+        runuser -u "$user" -- env \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus" \
+            python3 - "$backup" <<'PYEOF' 2>/dev/null || true
+import json, os, subprocess, sys
+defaults = {
+    "show-screenshot-ui": ["Print"],
+    "screenshot": ["<Shift>Print"],
+    "screenshot-window": ["<Alt>Print"],
+}
+try:
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+    if not isinstance(data, dict) or not data:
+        data = defaults
+except Exception:
+    data = defaults
+for key, vals in data.items():
+    val = "[" + ", ".join("'%s'" % v for v in vals) + "]"
+    subprocess.run(["gsettings", "set",
+                    "org.gnome.shell.keybindings", key, val])
+try:
+    os.remove(sys.argv[1])
+except OSError:
+    pass
+PYEOF
+    done
 fi
 PRERM
 chmod 755 "${DEB_DIR}/DEBIAN/prerm"

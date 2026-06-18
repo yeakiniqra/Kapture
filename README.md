@@ -17,7 +17,7 @@ Just like installing Discord or VS Code — one file, done. No Python or termina
 
 **Step 1 — Download the .deb**
 
-Go to the [Releases page](https://github.com/yeakiniqra/Kapture/releases/tag/v3.0.0) and download `kapture_3.0.0_amd64.deb`.
+Go to the [Releases page](https://github.com/yeakiniqra/Kapture/releases/tag/v3.0.1) and download `kapture_3.0.1_amd64.deb`.
 
 ---
 
@@ -29,7 +29,7 @@ It will open in GNOME Software / GDebi. Click **Install** and enter your passwor
 **Option B — Terminal**
 
 ```bash
-sudo dpkg -i kapture_3.0.0_amd64.deb
+sudo dpkg -i kapture_3.0.1_amd64.deb
 # if apt reports missing dependencies, pull them in with:
 sudo apt -f install
 ```
@@ -104,7 +104,7 @@ sudo apt install dpkg-dev
 bash build_deb.sh
 ```
 
-Output: `kapture_3.0.0_amd64.deb` — ready to share or install.
+Output: `kapture_3.0.1_amd64.deb` — ready to share or install.
 
 ## Usage
 
@@ -145,6 +145,9 @@ Settings persist in `~/.config/kapture/config.json`.
 - Ships a small GNOME Shell extension (`kapture-screenshot@yeakiniqra.github.io`) installed and registered by the `.deb`; activate with one log out/in
 
 ## Changelog
+
+### v3.0.1
+- **Fixed: Print Screen capture no longer permanently disables GNOME's built-in screenshot.** Earlier versions stripped `Print` from GNOME's `show-screenshot-ui` keybinding to claim it, but never restored it. Kapture now **backs up** GNOME's screenshot keybindings before borrowing `Print` and **restores** them automatically when you change the capture hotkey to something else or uninstall the package (falling back to GNOME's factory defaults if no backup is found).
 
 ### v3.0.0
 - **Pixelate / redaction tool** — drag to obscure sensitive areas; pixelation is committed as a baked layer so it can't be peeled back off the PNG

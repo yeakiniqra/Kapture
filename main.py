@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QVBoxLayout,
     QSystemTrayIcon, QMenu, QAction, QMessageBox, QFileDialog,
     QColorDialog, QRubberBand, QSizePolicy, QDialog,
-    QFrame, QShortcut, QGraphicsDropShadowEffect
+    QFrame, QShortcut, QGraphicsDropShadowEffect, QComboBox, QCheckBox
 )
 from PyQt5.QtGui import (
     QPixmap, QColor, QPainter, QPen, QBrush, QFont,
@@ -54,6 +54,43 @@ AUTHOR   = "Yeakin Iqra"
 
 # Per-user single-instance / remote-trigger socket name.
 _IPC_NAME = f"kapture-{os.getuid()}" if hasattr(os, "getuid") else "kapture"
+
+
+# ─── USER SETTINGS (persisted to ~/.config/kapture/config.json) ───────────────
+
+_CONFIG_PATH = os.path.expanduser("~/.config/kapture/config.json")
+_CONFIG_DEFAULTS = {
+    "save_dir": os.path.expanduser("~/Pictures"),
+    "auto_save": False,                 # Save without showing the file dialog
+    "capture_binding": "Print",         # GNOME accelerator for the global shortcut
+}
+
+
+def load_config() -> dict:
+    cfg = dict(_CONFIG_DEFAULTS)
+    try:
+        import json
+        with open(_CONFIG_PATH) as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            cfg.update({k: data[k] for k in _CONFIG_DEFAULTS if k in data})
+    except (OSError, ValueError):
+        pass
+    return cfg
+
+
+def save_config(cfg: dict):
+    try:
+        import json
+        os.makedirs(os.path.dirname(_CONFIG_PATH), exist_ok=True)
+        with open(_CONFIG_PATH, "w") as f:
+            json.dump(cfg, f, indent=2)
+        log.info("save_config: wrote %s", _CONFIG_PATH)
+    except OSError as e:
+        log.warning("save_config: %s", e)
+
+
+CONFIG = load_config()
 
 # Delay between trigger and capture, just long enough for the tray menu /
 # startup notification to disappear so they don't land in the screenshot.
@@ -323,9 +360,10 @@ class AnnotationWindow(QWidget):
     Draggable from the toolbar; remembers last position across captures.
     """
 
-    TOOL_PEN   = 'pen'
-    TOOL_ARROW = 'arrow'
-    TOOL_RECT  = 'rect'
+    TOOL_PEN      = 'pen'
+    TOOL_ARROW    = 'arrow'
+    TOOL_RECT     = 'rect'
+    TOOL_PIXELATE = 'pixelate'
     TOOLBAR_H  = 52
     CARD_RADIUS   = 12
     SHADOW_MARGIN = 24     # transparent border around the card for the drop shadow
@@ -393,7 +431,8 @@ class AnnotationWindow(QWidget):
         self._drag_offset = QPoint()
         self._dragging = False
         self._tool_btns: dict = {}
-        self._history: list = []     # overlay snapshots for undo
+        self._undo_stack: list = []   # overlay snapshots we can revert to
+        self._redo_stack: list = []   # snapshots we can re-apply
         self.card = None
 
         self._setup_ui()
@@ -471,7 +510,8 @@ class AnnotationWindow(QWidget):
         # Drawing tools
         for icon, tool, tip in [("✏", self.TOOL_PEN, "Pen  ·  P"),
                                 ("↗", self.TOOL_ARROW, "Arrow  ·  A"),
-                                ("▭", self.TOOL_RECT, "Rectangle  ·  R")]:
+                                ("▭", self.TOOL_RECT, "Rectangle  ·  R"),
+                                ("▦", self.TOOL_PIXELATE, "Pixelate / redact  ·  B")]:
             btn = QPushButton(icon)
             btn.setCheckable(True)
             btn.setChecked(tool == self.tool)
@@ -493,13 +533,20 @@ class AnnotationWindow(QWidget):
 
         tb.addWidget(self._separator())
 
-        # Undo
+        # Undo / Redo
         self.undo_btn = QPushButton("⟲")
         self.undo_btn.setCursor(Qt.PointingHandCursor)
         self.undo_btn.setStyleSheet(self._ICON_BTN_CSS)
         self.undo_btn.setToolTip("Undo  ·  Ctrl+Z")
         self.undo_btn.clicked.connect(self._undo)
         tb.addWidget(self.undo_btn)
+
+        self.redo_btn = QPushButton("⟳")
+        self.redo_btn.setCursor(Qt.PointingHandCursor)
+        self.redo_btn.setStyleSheet(self._ICON_BTN_CSS)
+        self.redo_btn.setToolTip("Redo  ·  Ctrl+Shift+Z")
+        self.redo_btn.clicked.connect(self._redo)
+        tb.addWidget(self.redo_btn)
 
         tb.addStretch()
 
@@ -525,15 +572,24 @@ class AnnotationWindow(QWidget):
         log.debug("AnnotationWindow._setup_ui: done, size=%s", self.size())
 
     def _position_close_btn(self):
-        """Pin the floating close button to the top-right of the screenshot."""
-        cx = self.canvas.x() + self.canvas.width() - self.close_btn.width() - 8
-        cy = self.canvas.y() + 8
-        self.close_btn.move(cx, cy)
+        """Pin the close button to the top-right corner of the window, exactly
+        like a standard window close button."""
+        if self.card is None:
+            return
+        inset = 10
+        x = self.card.width() - self.close_btn.width() - inset
+        y = inset
+        self.close_btn.move(x, y)
         self.close_btn.raise_()
 
     def showEvent(self, event):
         super().showEvent(event)
-        # Reposition once the layout has finalised real child geometry.
+        self._position_close_btn()
+        # Re-pin after the layout fully settles (card width is final by then).
+        QTimer.singleShot(0, self._position_close_btn)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
         self._position_close_btn()
 
     def _separator(self) -> QFrame:
@@ -548,10 +604,13 @@ class AnnotationWindow(QWidget):
         QShortcut(QKeySequence("Ctrl+S"), self,
                   activated=lambda: asyncio.ensure_future(self._save_to_file()))
         QShortcut(QKeySequence("Ctrl+Z"), self, activated=self._undo)
+        QShortcut(QKeySequence("Ctrl+Shift+Z"), self, activated=self._redo)
+        QShortcut(QKeySequence("Ctrl+Y"), self, activated=self._redo)
         QShortcut(QKeySequence(Qt.Key_Escape), self, activated=self.close)
         QShortcut(QKeySequence("P"), self, activated=lambda: self._select_tool(self.TOOL_PEN))
         QShortcut(QKeySequence("A"), self, activated=lambda: self._select_tool(self.TOOL_ARROW))
         QShortcut(QKeySequence("R"), self, activated=lambda: self._select_tool(self.TOOL_RECT))
+        QShortcut(QKeySequence("B"), self, activated=lambda: self._select_tool(self.TOOL_PIXELATE))
 
     def _toast(self, text: str):
         """Brief, self-dismissing pill notification centred over the canvas."""
@@ -584,13 +643,62 @@ class AnnotationWindow(QWidget):
             QPushButton:hover {{ border-color: #00aeff; }}
         """)
 
+    def _push_undo(self):
+        """Snapshot the overlay before a new edit; invalidates the redo stack."""
+        self._undo_stack.append(self.overlay.copy())
+        if len(self._undo_stack) > 40:
+            self._undo_stack.pop(0)
+        self._redo_stack.clear()
+
     def _undo(self):
-        if not self._history:
+        if not self._undo_stack:
             self._toast("Nothing to undo")
             return
-        self.overlay = self._history.pop()
+        self._redo_stack.append(self.overlay.copy())
+        self.overlay = self._undo_stack.pop()
         self.canvas.update()
-        log.debug("AnnotationWindow._undo: reverted (%d snapshot(s) left)", len(self._history))
+        log.debug("AnnotationWindow._undo: %d undo / %d redo left",
+                  len(self._undo_stack), len(self._redo_stack))
+
+    def _redo(self):
+        if not self._redo_stack:
+            self._toast("Nothing to redo")
+            return
+        self._undo_stack.append(self.overlay.copy())
+        self.overlay = self._redo_stack.pop()
+        self.canvas.update()
+        log.debug("AnnotationWindow._redo: %d undo / %d redo left",
+                  len(self._undo_stack), len(self._redo_stack))
+
+    def _pixelate_region(self, rect: QRect):
+        """Redact a region by mosaic (downscale → upscale with nearest-neighbour).
+
+        Pixelation is committed straight onto the overlay layer, so it bakes into
+        the exported PNG and cannot be peeled off — and unlike a heavy blur it is
+        not reversible, which is what you want for hiding secrets.
+        """
+        rect = rect.normalized().intersected(self.overlay.rect())
+        if rect.width() < 4 or rect.height() < 4:
+            return
+        # Sample whatever is currently visible (base + existing annotations).
+        composite = QPixmap(self.base_pixmap)
+        cp = QPainter(composite)
+        cp.drawPixmap(0, 0, self.overlay)
+        cp.end()
+
+        patch = composite.copy(rect)
+        block = 9                                  # ~mosaic cell size in px
+        sw = max(1, rect.width() // block)
+        sh = max(1, rect.height() // block)
+        small = patch.scaled(sw, sh, Qt.IgnoreAspectRatio, Qt.FastTransformation)
+        mosaic = small.scaled(rect.width(), rect.height(),
+                              Qt.IgnoreAspectRatio, Qt.FastTransformation)
+
+        p = QPainter(self.overlay)
+        p.drawPixmap(rect.topLeft(), mosaic)
+        p.end()
+        log.debug("AnnotationWindow._pixelate_region: redacted %dx%d at (%d,%d)",
+                  rect.width(), rect.height(), rect.x(), rect.y())
 
     def _copy_to_clipboard(self):
         QApplication.clipboard().setPixmap(self._final_pixmap())
@@ -611,6 +719,14 @@ class AnnotationWindow(QWidget):
         return QPen(self.color, self.pen_size, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
 
     def _paint_live(self, painter: QPainter):
+        if self.tool == self.TOOL_PIXELATE:
+            # Preview the redaction area (the mosaic is applied on release).
+            r = QRect(self.start_pt, self.cur_pt).normalized()
+            painter.fillRect(r, QColor(0, 0, 0, 95))
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(QColor(0, 174, 255), 1, Qt.DashLine))
+            painter.drawRect(r)
+            return
         painter.setPen(self._make_pen())
         painter.setBrush(Qt.NoBrush)
         if self.tool == self.TOOL_PEN and len(self.pen_path) > 1:
@@ -639,10 +755,14 @@ class AnnotationWindow(QWidget):
 
     def _commit(self):
         log.debug("AnnotationWindow._commit: tool=%s", self.tool)
-        # Snapshot the overlay BEFORE drawing so this stroke can be undone.
-        self._history.append(self.overlay.copy())
-        if len(self._history) > 40:
-            self._history.pop(0)
+        # Snapshot the overlay BEFORE the edit so it can be undone/redone.
+        self._push_undo()
+
+        if self.tool == self.TOOL_PIXELATE:
+            self._pixelate_region(QRect(self.start_pt, self.cur_pt))
+            self.pen_path = []
+            return
+
         p = QPainter(self.overlay)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(self._make_pen())
@@ -686,10 +806,25 @@ class AnnotationWindow(QWidget):
     # ── save ──────────────────────────────────────────────────────────────────
 
     async def _save_to_file(self):
-        log.info("AnnotationWindow._save_to_file: opening dialog")
         ts = time.strftime("%Y%m%d_%H%M%S")
-        default = os.path.expanduser(f"~/Pictures/kapture_{ts}.png")
+        final = self._final_pixmap()
 
+        # Auto-save: skip the dialog and write straight to the configured folder.
+        if CONFIG.get("auto_save"):
+            save_dir = CONFIG.get("save_dir") or os.path.expanduser("~/Pictures")
+            try:
+                os.makedirs(save_dir, exist_ok=True)
+            except OSError:
+                save_dir = os.path.expanduser("~")
+            path = os.path.join(save_dir, f"kapture_{ts}.png")
+            log.info("AnnotationWindow._save_to_file: auto-saving to %s", path)
+            await asyncio.to_thread(final.save, path)
+            self._toast(f"Saved  ·  {os.path.basename(path)}")
+            return
+
+        log.info("AnnotationWindow._save_to_file: opening dialog")
+        default = os.path.join(CONFIG.get("save_dir") or os.path.expanduser("~/Pictures"),
+                               f"kapture_{ts}.png")
         # Create dialog explicitly so we can clear the inherited dark stylesheet
         dlg = QFileDialog(None, "Save Screenshot", default,
                           "PNG Image (*.png);;JPEG Image (*.jpg);;All Files (*)")
@@ -702,7 +837,6 @@ class AnnotationWindow(QWidget):
             path = ""
         if path:
             log.info("AnnotationWindow._save_to_file: saving to %s", path)
-            final = self._final_pixmap()
             await asyncio.to_thread(final.save, path)
             self._toast(f"Saved  ·  {os.path.basename(path)}")
             log.info("AnnotationWindow._save_to_file: done")
@@ -1394,6 +1528,171 @@ class HelperSetupDialog(QDialog):
             super().keyPressEvent(e)
 
 
+# ─── SETTINGS DIALOG ──────────────────────────────────────────────────────────
+
+class SettingsDialog(QDialog):
+    """Themed settings — capture shortcut, save folder, and auto-save."""
+
+    _SHORTCUTS = [
+        ("Print Screen",          "Print"),
+        ("Ctrl + Shift + S",      "<Control><Shift>s"),
+        ("Ctrl + Print Screen",   "<Control>Print"),
+        ("Super + Shift + S",     "<Super><Shift>s"),
+    ]
+    _COMBO_CSS = """
+        QComboBox {
+            background: #15151f; color: #e0e0f4; border: 1px solid #2f2f4d;
+            border-radius: 8px; padding: 7px 10px; font-size: 13px;
+        }
+        QComboBox:hover { border-color: #00aeff; }
+        QComboBox::drop-down { border: none; width: 22px; }
+        QComboBox QAbstractItemView {
+            background: #15151f; color: #e0e0f4; border: 1px solid #2f2f4d;
+            selection-background-color: #00aeff; selection-color: #04121d; outline: none;
+        }
+    """
+    _CHECK_CSS = """
+        QCheckBox { color: #cfcfe8; font-size: 13px; spacing: 6px; }
+        QCheckBox::indicator {
+            width: 18px; height: 18px; border-radius: 5px;
+            border: 1px solid #2f2f4d; background: #15151f;
+        }
+        QCheckBox::indicator:checked { background: #00aeff; border-color: #00aeff; }
+    """
+
+    def __init__(self, apply_cb=None, parent=None):
+        super().__init__(parent)
+        self._apply_cb = apply_cb
+        self._drag = QPoint()
+        self._save_dir = CONFIG.get("save_dir") or os.path.expanduser("~/Pictures")
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setModal(True)
+        self._build()
+
+    def _build(self):
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(18, 18, 18, 18)
+
+        card = QWidget()
+        card.setObjectName("card")
+        card.setFixedWidth(440)
+        card.setStyleSheet("""
+            QWidget#card { background: #0e0e18; border: 1px solid #2a2a44; border-radius: 16px; }
+            QLabel { color: #e7e7fb; background: transparent; border: none; }
+        """)
+        sh = QGraphicsDropShadowEffect(self)
+        sh.setBlurRadius(46); sh.setColor(QColor(0, 0, 0, 200)); sh.setOffset(0, 10)
+        card.setGraphicsEffect(sh)
+        outer.addWidget(card)
+
+        v = QVBoxLayout(card)
+        v.setContentsMargins(26, 24, 26, 20)
+        v.setSpacing(14)
+
+        title = QLabel("Settings")
+        title.setStyleSheet("font-size: 20px; font-weight: 800; color: #ffffff;")
+        v.addWidget(title)
+
+        # Capture shortcut
+        v.addWidget(self._field_label("Capture shortcut"))
+        self.combo = QComboBox()
+        self.combo.setCursor(Qt.PointingHandCursor)
+        self.combo.setStyleSheet(self._COMBO_CSS)
+        for label, _b in self._SHORTCUTS:
+            self.combo.addItem(label)
+        cur = CONFIG.get("capture_binding", "Print")
+        self.combo.setCurrentIndex(
+            next((i for i, (_l, b) in enumerate(self._SHORTCUTS) if b == cur), 0))
+        v.addWidget(self.combo)
+
+        # Save folder
+        v.addWidget(self._field_label("Save folder"))
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        self.dir_lbl = QLabel(self._save_dir)
+        self.dir_lbl.setStyleSheet(
+            "background: #15151f; border: 1px solid #2f2f4d; border-radius: 8px;"
+            "padding: 7px 10px; color: #cfcfe8; font-size: 12px;")
+        self.dir_lbl.setMinimumWidth(250)
+        row.addWidget(self.dir_lbl, 1)
+        browse = QPushButton("Browse")
+        browse.setCursor(Qt.PointingHandCursor)
+        browse.setStyleSheet(AnnotationWindow._PILL_BTN_CSS)
+        browse.clicked.connect(self._browse)
+        row.addWidget(browse)
+        v.addLayout(row)
+
+        # Auto-save
+        self.autosave = QCheckBox("  Auto-save (skip the file dialog)")
+        self.autosave.setChecked(bool(CONFIG.get("auto_save")))
+        self.autosave.setCursor(Qt.PointingHandCursor)
+        self.autosave.setStyleSheet(self._CHECK_CSS)
+        v.addWidget(self.autosave)
+
+        line = QFrame()
+        line.setFixedHeight(1)
+        line.setStyleSheet("background: #23233a; border: none;")
+        v.addWidget(line)
+
+        btns = QHBoxLayout()
+        btns.addStretch()
+        btns.setSpacing(8)
+        cancel = QPushButton("Cancel")
+        cancel.setCursor(Qt.PointingHandCursor)
+        cancel.setStyleSheet(AnnotationWindow._PILL_BTN_CSS)
+        cancel.clicked.connect(self.reject)
+        btns.addWidget(cancel)
+        save = QPushButton("Save")
+        save.setCursor(Qt.PointingHandCursor)
+        save.setStyleSheet(AnnotationWindow._PILL_ACCENT_CSS)
+        save.clicked.connect(self._apply)
+        btns.addWidget(save)
+        v.addLayout(btns)
+
+    @staticmethod
+    def _field_label(text):
+        lbl = QLabel(text)
+        lbl.setStyleSheet("color: #8a8aa8; font-size: 12px; font-weight: 600;")
+        return lbl
+
+    def _browse(self):
+        d = QFileDialog.getExistingDirectory(self, "Choose save folder", self._save_dir)
+        if d:
+            self._save_dir = d
+            self.dir_lbl.setText(d)
+
+    def _apply(self):
+        CONFIG["save_dir"] = self._save_dir
+        CONFIG["auto_save"] = self.autosave.isChecked()
+        binding = self._SHORTCUTS[self.combo.currentIndex()][1]
+        CONFIG["capture_binding"] = binding
+        save_config(CONFIG)
+        if self._apply_cb:
+            try:
+                self._apply_cb(binding)
+            except Exception as e:
+                log.debug("SettingsDialog._apply: apply_cb failed: %s", e)
+        self.accept()
+
+    # Draggable (frameless) ────────────────────────────────────────────────────
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self._drag = e.globalPos() - self.frameGeometry().topLeft()
+            e.accept()
+
+    def mouseMoveEvent(self, e):
+        if e.buttons() & Qt.LeftButton:
+            self.move(e.globalPos() - self._drag)
+            e.accept()
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key_Escape:
+            self.reject()
+        else:
+            super().keyPressEvent(e)
+
+
 # ─── SYSTEM TRAY ──────────────────────────────────────────────────────────────
 
 class TrayApp(QSystemTrayIcon):
@@ -1509,7 +1808,10 @@ class TrayApp(QSystemTrayIcon):
         capture_action = QAction(f"📷  Capture Region  ({_HOTKEY_DISPLAY})", self)
         capture_action.triggered.connect(self._start_capture)
 
-        shortcut_action = QAction("⌨️  Set Print Screen → Kapture", self)
+        settings_action = QAction("⚙️  Settings", self)
+        settings_action.triggered.connect(self._show_settings)
+
+        shortcut_action = QAction("⌨️  Set capture shortcut", self)
         shortcut_action.triggered.connect(self._setup_shortcuts_interactive)
 
         about_action = QAction(f"ℹ️  About {APP_NAME}", self)
@@ -1519,6 +1821,8 @@ class TrayApp(QSystemTrayIcon):
         quit_action.triggered.connect(self.app.quit)
 
         menu.addAction(capture_action)
+        menu.addSeparator()
+        menu.addAction(settings_action)
         menu.addAction(shortcut_action)
         menu.addSeparator()
         menu.addAction(about_action)
@@ -1788,10 +2092,12 @@ class TrayApp(QSystemTrayIcon):
         if not shutil.which("gsettings"):
             return False
         cmd = self._launch_command()
+        binding = CONFIG.get("capture_binding", "Print")
         try:
-            self._register_custom_keybinding("kapture", "Kapture — Capture", cmd, "Print")
-            self._free_gnome_print()
-            log.info("_setup_gnome_shortcuts: Print Screen now launches Kapture")
+            self._register_custom_keybinding("kapture", "Kapture — Capture", cmd, binding)
+            if binding == "Print":
+                self._free_gnome_print()
+            log.info("_setup_gnome_shortcuts: %s now launches Kapture", binding)
             return True
         except Exception as e:
             log.warning("_setup_gnome_shortcuts: %s", e)
@@ -1885,6 +2191,25 @@ class TrayApp(QSystemTrayIcon):
     def _show_about(self):
         log.debug("TrayApp._show_about: opening about dialog")
         AboutDialog().exec_()
+
+    def _show_settings(self):
+        log.debug("TrayApp._show_settings: opening settings dialog")
+        SettingsDialog(apply_cb=self._apply_capture_binding).exec_()
+
+    def _apply_capture_binding(self, binding: str):
+        """Re-bind the GNOME capture shortcut to the chosen accelerator."""
+        if "gnome" not in os.environ.get("XDG_CURRENT_DESKTOP", "").lower():
+            return
+        if not shutil.which("gsettings"):
+            return
+        try:
+            self._register_custom_keybinding(
+                "kapture", "Kapture — Capture", self._launch_command(), binding)
+            if binding == "Print":
+                self._free_gnome_print()
+            log.info("TrayApp._apply_capture_binding: %s", binding)
+        except Exception as e:
+            log.warning("TrayApp._apply_capture_binding: %s", e)
 
 
 # ─── ENTRY POINT ──────────────────────────────────────────────────────────────

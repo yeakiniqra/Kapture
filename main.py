@@ -30,6 +30,7 @@ from PyQt5.QtCore import (
     pyqtSignal, pyqtSlot, QObject
 )
 from PyQt5.QtDBus import QDBusConnection, QDBusInterface, QDBusMessage
+from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from pynput import keyboard
 import qasync
 
@@ -48,8 +49,11 @@ log = logging.getLogger("kapture")
 
 HOTKEYS = ["<print_screen>", "<ctrl>+<shift>+s"]   # All active hotkeys
 APP_NAME = "Kapture"
-VERSION  = "2.0.0"
+VERSION  = "3.0.0"
 AUTHOR   = "Yeakin Iqra"
+
+# Per-user single-instance / remote-trigger socket name.
+_IPC_NAME = f"kapture-{os.getuid()}" if hasattr(os, "getuid") else "kapture"
 
 # Delay between trigger and capture, just long enough for the tray menu /
 # startup notification to disappear so they don't land in the screenshot.
@@ -121,8 +125,8 @@ class OverlayWindow(QWidget):
         # Draw the captured screen as base
         painter.drawPixmap(0, 0, self.full_pixmap)
 
-        # Darken overlay
-        painter.fillRect(self.rect(), QColor(0, 0, 0, 120))
+        # Darken overlay (stronger so the bright selection clearly stands out)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 150))
 
         if not self.selection.isNull() and self.is_drawing:
             sel = self.selection.normalized()
@@ -130,9 +134,15 @@ class OverlayWindow(QWidget):
             # Cut out the selection (bright, not darkened)
             painter.drawPixmap(sel, self.full_pixmap, sel)
 
-            # Selection border
-            pen = QPen(QColor(0, 174, 255), 2, Qt.SolidLine)
-            painter.setPen(pen)
+            # Soft accent glow so the selection visibly "lifts" off the backdrop
+            painter.setBrush(Qt.NoBrush)
+            for i, alpha in enumerate((28, 18, 10)):
+                grow = 2 + i * 3
+                painter.setPen(QPen(QColor(0, 174, 255, alpha), 2 + i * 2))
+                painter.drawRect(sel.adjusted(-grow, -grow, grow, grow))
+
+            # Crisp selection border
+            painter.setPen(QPen(QColor(0, 174, 255), 2, Qt.SolidLine))
             painter.drawRect(sel)
 
             # Corner handles
@@ -318,7 +328,7 @@ class AnnotationWindow(QWidget):
     TOOL_RECT  = 'rect'
     TOOLBAR_H  = 52
     CARD_RADIUS   = 12
-    SHADOW_MARGIN = 16     # transparent border around the card for the drop shadow
+    SHADOW_MARGIN = 24     # transparent border around the card for the drop shadow
 
     _last_pos: QPoint = None
 
@@ -352,13 +362,15 @@ class AnnotationWindow(QWidget):
         QPushButton:hover   { background: #2bbcff; border-color: #2bbcff; }
         QPushButton:pressed { background: #009fe6; }
     """
+    # Floating close button overlaid on the top-right of the screenshot.
     _CLOSE_BTN_CSS = """
         QPushButton {
-            background: transparent; border: none; color: #6b6b8a;
-            font-size: 15px; border-radius: 8px;
-            min-width: 32px; max-width: 32px; min-height: 32px; max-height: 32px;
+            background: rgba(14, 14, 24, 0.82); color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 14px;
+            font-size: 13px; font-weight: 700;
         }
-        QPushButton:hover { color: #ff5470; background: #2a1320; }
+        QPushButton:hover  { background: #ff5470; border-color: #ff5470; }
+        QPushButton:pressed { background: #e23c58; }
     """
 
     def __init__(self, pixmap: QPixmap, region: QRect):
@@ -405,29 +417,40 @@ class AnnotationWindow(QWidget):
         outer.setSpacing(0)
 
         # Card — the visible rounded panel that floats above the desktop.
+        # A bright accent ring + deep shadow make it unmistakably a floating
+        # window (otherwise the screenshot blends into the desktop behind it).
         self.card = QWidget()
         self.card.setObjectName("card")
         self.card.setStyleSheet(f"""
             QWidget#card {{
                 background: #0e0e18;
-                border: 1px solid #2a2a44;
+                border: 2px solid #00aeff;
                 border-radius: {self.CARD_RADIUS}px;
             }}
         """)
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(40)
-        shadow.setColor(QColor(0, 0, 0, 190))
-        shadow.setOffset(0, 9)
+        shadow.setBlurRadius(60)
+        shadow.setColor(QColor(0, 0, 0, 235))
+        shadow.setOffset(0, 14)
         self.card.setGraphicsEffect(shadow)
         outer.addWidget(self.card)
 
         card_layout = QVBoxLayout(self.card)
-        card_layout.setContentsMargins(1, 1, 1, 1)
+        card_layout.setContentsMargins(2, 2, 2, 2)
         card_layout.setSpacing(0)
 
         # Canvas
         self.canvas = _AnnotationCanvas(self)
         card_layout.addWidget(self.canvas)
+
+        # Floating close button — top-right of the screenshot (fix: cross on top).
+        self.close_btn = QPushButton("✕", self.card)
+        self.close_btn.setObjectName("topClose")
+        self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setFixedSize(28, 28)
+        self.close_btn.setStyleSheet(self._CLOSE_BTN_CSS)
+        self.close_btn.setToolTip("Close  ·  Esc")
+        self.close_btn.clicked.connect(self.close)
 
         # Toolbar (also the drag handle)
         tb_widget = _DragHandle(self)
@@ -495,19 +518,23 @@ class AnnotationWindow(QWidget):
         self.save_btn.clicked.connect(lambda: asyncio.ensure_future(self._save_to_file()))
         tb.addWidget(self.save_btn)
 
-        tb.addWidget(self._separator())
-
-        close_btn = QPushButton("✕")
-        close_btn.setCursor(Qt.PointingHandCursor)
-        close_btn.setStyleSheet(self._CLOSE_BTN_CSS)
-        close_btn.setToolTip("Close  ·  Esc")
-        close_btn.clicked.connect(self.close)
-        tb.addWidget(close_btn)
-
         card_layout.addWidget(tb_widget)
         self.adjustSize()
+        self._position_close_btn()
         self._install_shortcuts()
         log.debug("AnnotationWindow._setup_ui: done, size=%s", self.size())
+
+    def _position_close_btn(self):
+        """Pin the floating close button to the top-right of the screenshot."""
+        cx = self.canvas.x() + self.canvas.width() - self.close_btn.width() - 8
+        cy = self.canvas.y() + 8
+        self.close_btn.move(cx, cy)
+        self.close_btn.raise_()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Reposition once the layout has finalised real child geometry.
+        self._position_close_btn()
 
     def _separator(self) -> QFrame:
         line = QFrame()
@@ -1379,6 +1406,7 @@ class TrayApp(QSystemTrayIcon):
         self.engine = ScreenshotEngine()
         self.overlay = None
         self.annotation_win = None
+        self._ipc = None
 
         self._setup_menu()
         self.setToolTip(f"{APP_NAME}\n{_HOTKEY_DISPLAY} to capture")
@@ -1387,11 +1415,15 @@ class TrayApp(QSystemTrayIcon):
         # Connect the cross-thread signal
         bridge.trigger_screenshot.connect(self._start_capture)
 
-        # Start global hotkey listener
+        # Start global hotkey listener (works on X11; Wayland uses the GNOME
+        # shortcut below, which triggers capture over IPC).
         self._start_hotkey_listener()
 
         # On GNOME Wayland, make sure the flash-free Shell helper is enabled.
         self._ensure_capture_helper()
+
+        # Register Print Screen → Kapture via a GNOME custom shortcut (once).
+        self._maybe_setup_shortcuts()
 
         self._notify_ready()
         log.info("TrayApp.__init__: system tray ready")
@@ -1477,6 +1509,9 @@ class TrayApp(QSystemTrayIcon):
         capture_action = QAction(f"📷  Capture Region  ({_HOTKEY_DISPLAY})", self)
         capture_action.triggered.connect(self._start_capture)
 
+        shortcut_action = QAction("⌨️  Set Print Screen → Kapture", self)
+        shortcut_action.triggered.connect(self._setup_shortcuts_interactive)
+
         about_action = QAction(f"ℹ️  About {APP_NAME}", self)
         about_action.triggered.connect(self._show_about)
 
@@ -1484,6 +1519,7 @@ class TrayApp(QSystemTrayIcon):
         quit_action.triggered.connect(self.app.quit)
 
         menu.addAction(capture_action)
+        menu.addAction(shortcut_action)
         menu.addSeparator()
         menu.addAction(about_action)
         menu.addAction(quit_action)
@@ -1701,6 +1737,142 @@ class TrayApp(QSystemTrayIcon):
         listener.start()
         log.info("TrayApp._start_hotkey_listener: listener started")
 
+    # ── single-instance IPC (lets `kapture --capture` trigger this instance) ──
+
+    def start_ipc_server(self):
+        """Listen on a per-user local socket so a `kapture --capture` launched by
+        the GNOME shortcut triggers THIS running instance instead of spawning a
+        duplicate tray app."""
+        try:
+            QLocalServer.removeServer(_IPC_NAME)   # clear any stale socket
+            self._ipc = QLocalServer(self)
+            if self._ipc.listen(_IPC_NAME):
+                self._ipc.newConnection.connect(self._on_ipc_connection)
+                log.info("TrayApp.start_ipc_server: listening on %s", _IPC_NAME)
+            else:
+                log.warning("TrayApp.start_ipc_server: listen failed: %s",
+                            self._ipc.errorString())
+        except Exception as e:
+            log.warning("TrayApp.start_ipc_server: %s", e)
+
+    def _on_ipc_connection(self):
+        conn = self._ipc.nextPendingConnection()
+        if conn is None:
+            return
+
+        def _read():
+            data = bytes(conn.readAll()).decode("utf-8", "ignore")
+            log.info("TrayApp._on_ipc_connection: received %r", data)
+            if "capture" in data:
+                bridge.trigger_screenshot.emit()
+            conn.disconnectFromServer()
+
+        conn.readyRead.connect(_read)
+
+    # ── GNOME custom shortcut (Print Screen → Kapture) ────────────────────────
+
+    @staticmethod
+    def _launch_command() -> str:
+        """Shell command GNOME runs for the shortcut (paths quoted for spaces)."""
+        if getattr(sys, "frozen", False):
+            return f'"{sys.executable}" --capture'
+        return f'"{sys.executable}" "{os.path.abspath(sys.argv[0])}" --capture'
+
+    def _setup_gnome_shortcuts(self) -> bool:
+        """Bind Print Screen (and Ctrl+Shift+S) to Kapture via a GNOME custom
+        keybinding, and free Print from GNOME's built-in screenshot UI.
+        Returns True on a GNOME session where the bindings were applied."""
+        if "gnome" not in os.environ.get("XDG_CURRENT_DESKTOP", "").lower():
+            log.debug("_setup_gnome_shortcuts: not GNOME; skipping")
+            return False
+        if not shutil.which("gsettings"):
+            return False
+        cmd = self._launch_command()
+        try:
+            self._register_custom_keybinding("kapture", "Kapture — Capture", cmd, "Print")
+            self._free_gnome_print()
+            log.info("_setup_gnome_shortcuts: Print Screen now launches Kapture")
+            return True
+        except Exception as e:
+            log.warning("_setup_gnome_shortcuts: %s", e)
+            return False
+
+    @staticmethod
+    def _gs_get(args):
+        return subprocess.run(["gsettings", "get"] + args,
+                              capture_output=True, text=True, timeout=5).stdout.strip()
+
+    @staticmethod
+    def _gs_set(args):
+        subprocess.run(["gsettings", "set"] + args, timeout=5)
+
+    @classmethod
+    def _register_custom_keybinding(cls, slug, name, command, binding):
+        import ast
+        base = "org.gnome.settings-daemon.plugins.media-keys"
+        path = ("/org/gnome/settings-daemon/plugins/media-keys/"
+                f"custom-keybindings/{slug}/")
+        raw = cls._gs_get([base, "custom-keybindings"])
+        if raw.startswith("@as"):
+            raw = raw[raw.find("["):]
+        try:
+            paths = ast.literal_eval(raw) if raw.startswith("[") else []
+        except (ValueError, SyntaxError):
+            paths = []
+        if path not in paths:
+            paths.append(path)
+            cls._gs_set([base, "custom-keybindings",
+                         "[" + ", ".join("'%s'" % p for p in paths) + "]"])
+        schema = ("org.gnome.settings-daemon.plugins.media-keys."
+                  "custom-keybinding:" + path)
+        cls._gs_set([schema, "name", name])
+        cls._gs_set([schema, "command", command])
+        cls._gs_set([schema, "binding", binding])
+
+    @classmethod
+    def _free_gnome_print(cls):
+        """Remove 'Print' from GNOME's own screenshot keybindings so our custom
+        binding takes effect (GNOME 42+ binds the screenshot UI to Print)."""
+        import ast
+        for key in ("show-screenshot-ui", "screenshot"):
+            try:
+                raw = cls._gs_get(["org.gnome.shell.keybindings", key])
+                if "Print" not in raw:
+                    continue
+                vals = ast.literal_eval(raw) if raw.startswith("[") else []
+                vals = [v for v in vals if v != "Print"]
+                cls._gs_set(["org.gnome.shell.keybindings", key,
+                             "[" + ", ".join("'%s'" % v for v in vals) + "]"])
+                log.info("_free_gnome_print: removed Print from %s", key)
+            except Exception as e:
+                log.debug("_free_gnome_print: %s (%s)", key, e)
+
+    def _maybe_setup_shortcuts(self):
+        """Run the GNOME shortcut setup once per machine (stamped)."""
+        stamp = os.path.expanduser("~/.cache/kapture/shortcuts_set")
+        if os.path.exists(stamp):
+            return
+        if self._setup_gnome_shortcuts():
+            self.showMessage(
+                APP_NAME,
+                "Print Screen now opens Kapture. (Change it anytime in "
+                "Settings → Keyboard → Shortcuts.)",
+                QSystemTrayIcon.Information, 6000)
+        try:
+            os.makedirs(os.path.dirname(stamp), exist_ok=True)
+            open(stamp, "w").close()
+        except OSError:
+            pass
+
+    def _setup_shortcuts_interactive(self):
+        ok = self._setup_gnome_shortcuts()
+        self.showMessage(
+            APP_NAME,
+            "Print Screen now opens Kapture." if ok else
+            "Couldn't set it automatically — add a shortcut in Settings → "
+            "Keyboard pointing to:  kapture --capture",
+            QSystemTrayIcon.Information, 6000)
+
     def _notify_ready(self):
         log.info("TrayApp._notify_ready: showing startup notification")
         self.showMessage(
@@ -1723,6 +1895,20 @@ def main():
     app.setApplicationName(APP_NAME)
     app.setQuitOnLastWindowClosed(False)  # Stay alive in tray
 
+    want_capture = "--capture" in sys.argv[1:]
+
+    # ── Single instance: if Kapture is already running, forward the request ────
+    probe = QLocalSocket()
+    probe.connectToServer(_IPC_NAME)
+    if probe.waitForConnected(300):
+        probe.write(b"capture" if want_capture else b"show")
+        probe.flush()
+        probe.waitForBytesWritten(500)
+        probe.disconnectFromServer()
+        log.info("main: forwarded '%s' to the running instance; exiting",
+                 "capture" if want_capture else "show")
+        return
+
     # Set application-wide window icon (taskbar, alt-tab, dialogs)
     icon_file = resource_path(os.path.join('assets', 'icon.png'))
     if os.path.isfile(icon_file):
@@ -1739,6 +1925,11 @@ def main():
     log.info("main: asyncio event loop set to qasync.QEventLoop")
 
     tray = TrayApp(app)
+    tray.start_ipc_server()
+
+    # If launched as `kapture --capture` while not already running, capture once.
+    if want_capture:
+        QTimer.singleShot(600, lambda: bridge.trigger_screenshot.emit())
 
     with loop:
         log.info("main: entering event loop")

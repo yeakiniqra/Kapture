@@ -76,7 +76,7 @@ INSTALLED_SIZE=$(du -sk --exclude=DEBIAN "${DEB_DIR}" | cut -f1)
 # default on desktop Ubuntu.
 # Recommends: native Wayland capture uses the XDG desktop portal (present by
 # default on GNOME/KDE); grim is only needed on wlroots compositors. No
-# gnome-screenshot/scrot — Kapture v2 captures in-process.
+# gnome-screenshot/scrot — Kapture captures in-process.
 cat > "${DEB_DIR}/DEBIAN/control" << EOF
 Package: ${PKG_NAME}
 Version: ${VERSION}

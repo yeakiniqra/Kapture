@@ -7,10 +7,17 @@ set -euo pipefail
 PKG_NAME="kapture"
 VERSION=$(grep -oP 'VERSION\s*=\s*"\K[^"]+' main.py)
 MAINTAINER="Yeakin Iqra"
+DEVELOPER="Yeakin Iqra"                 # shown as the App Center publisher/developer
 DESCRIPTION="Lightshot-style screenshot tool for Ubuntu"
+LICENSE="MIT"                           # SPDX id; shown in the App Center "License" field
+# Reverse-DNS AppStream component id. AppStream links the metainfo, the .desktop
+# launcher and the icon together through this id, so the desktop file, the icon
+# files and the metainfo file are ALL named after it.
+APP_ID="io.github.yeakiniqra.Kapture"
+RELEASE_DATE=$(date +%Y-%m-%d)          # stamps the metainfo <release> ("Last updated")
 ARCH=$(dpkg --print-architecture)
 BINARY_SRC="dist/kapture"
-ICON_SRC="assets/icon.png"
+ICON_SRC="assets/app-logo.png"          # source logo (squared below for the icon set)
 DEB_DIR="${PKG_NAME}_${VERSION}_${ARCH}"
 
 echo "==> Kapture .deb builder"
@@ -32,14 +39,35 @@ mkdir -p "${DEB_DIR}/DEBIAN"
 mkdir -p "${DEB_DIR}/usr/bin"
 mkdir -p "${DEB_DIR}/usr/share/applications"
 mkdir -p "${DEB_DIR}/usr/share/icons/hicolor/256x256/apps"
+mkdir -p "${DEB_DIR}/usr/share/icons/hicolor/512x512/apps"
 mkdir -p "${DEB_DIR}/usr/share/pixmaps"
+mkdir -p "${DEB_DIR}/usr/share/metainfo"
+mkdir -p "${DEB_DIR}/usr/share/doc/${PKG_NAME}"
 
 # Binary
 install -m 755 "${BINARY_SRC}" "${DEB_DIR}/usr/bin/${PKG_NAME}"
 
-# Icons
-install -m 644 "${ICON_SRC}" "${DEB_DIR}/usr/share/icons/hicolor/256x256/apps/${PKG_NAME}.png"
-install -m 644 "${ICON_SRC}" "${DEB_DIR}/usr/share/pixmaps/${PKG_NAME}.png"
+# Icons — named after the AppStream id so the metainfo <icon type="stock"> resolves.
+# The source logo is not square; pad it onto a transparent square canvas, then emit
+# 512 and 256 PNGs so App Center and the shell each pick a crisp size. Uses Pillow
+# (already a project dependency) so no extra system package is required.
+python3 - "${ICON_SRC}" \
+    "${DEB_DIR}/usr/share/icons/hicolor/512x512/apps/${APP_ID}.png" \
+    "${DEB_DIR}/usr/share/icons/hicolor/256x256/apps/${APP_ID}.png" << 'PYICON'
+import sys
+from PIL import Image
+
+src = sys.argv[1]
+img = Image.open(src).convert("RGBA")
+side = max(img.size)
+# Center the logo on a transparent square so nothing is cropped or stretched.
+square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+square.paste(img, ((side - img.width) // 2, (side - img.height) // 2))
+for out, sz in ((sys.argv[2], 512), (sys.argv[3], 256)):
+    square.resize((sz, sz), Image.LANCZOS).save(out)
+PYICON
+install -m 644 "${DEB_DIR}/usr/share/icons/hicolor/512x512/apps/${APP_ID}.png" \
+              "${DEB_DIR}/usr/share/pixmaps/${APP_ID}.png"
 
 # GNOME Shell extension — flash-free, prompt-free capture on Wayland.
 EXT_UUID="kapture-screenshot@yeakiniqra.github.io"
@@ -49,8 +77,9 @@ mkdir -p "${EXT_DEST}"
 install -m 644 "${EXT_SRC}/metadata.json" "${EXT_DEST}/metadata.json"
 install -m 644 "${EXT_SRC}/extension.js"  "${EXT_DEST}/extension.js"
 
-# Desktop entry (shows Kapture in the app menu / launcher)
-cat > "${DEB_DIR}/usr/share/applications/${PKG_NAME}.desktop" << EOF
+# Desktop entry (shows Kapture in the app menu / launcher). Named after APP_ID so
+# the metainfo <launchable> can bind to it; Icon= uses APP_ID to match the icons.
+cat > "${DEB_DIR}/usr/share/applications/${APP_ID}.desktop" << EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
@@ -58,11 +87,96 @@ Name=Kapture
 GenericName=Screenshot Tool
 Comment=Lightshot-style screenshot and annotation tool
 Exec=kapture
-Icon=kapture
+Icon=${APP_ID}
 Categories=Graphics;Utility;
 Keywords=screenshot;capture;annotation;snip;
 Terminal=false
 StartupNotify=false
+EOF
+
+# AppStream MetaInfo — THIS is what App Center reads for the icon, the developer
+# name, the License field, the long description, screenshots and "Last updated".
+# Without it a sideloaded .deb shows a placeholder icon and "License: unknown".
+# The <id> must match the .desktop filename (minus .desktop) and the icon name.
+cat > "${DEB_DIR}/usr/share/metainfo/${APP_ID}.metainfo.xml" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>${APP_ID}</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>${LICENSE}</project_license>
+
+  <name>Kapture</name>
+  <summary>Lightshot-style screenshot and annotation tool</summary>
+
+  <developer id="io.github.yeakiniqra">
+    <name>${DEVELOPER}</name>
+  </developer>
+  <!-- Legacy fallback for older AppStream (&lt; 1.0) so the publisher still shows. -->
+  <developer_name>${DEVELOPER}</developer_name>
+
+  <description>
+    <p>
+      Kapture is a Lightshot-style region screenshot tool for Ubuntu. Drag to
+      select any region, annotate it, then copy or save in one keystroke.
+    </p>
+    <ul>
+      <li>Annotation tools: pen, arrow, rectangle and pixelate/redact</li>
+      <li>Automatic clipboard copy on capture</li>
+      <li>Undo/redo and a configurable capture shortcut</li>
+      <li>Runs silently in the system tray</li>
+      <li>Native capture with no external tools: QScreen on X11, the XDG portal on Wayland</li>
+    </ul>
+    <p>Activate with Print Screen or Ctrl+Shift+S.</p>
+  </description>
+
+  <launchable type="desktop-id">${APP_ID}.desktop</launchable>
+  <categories>
+    <category>Graphics</category>
+    <category>Utility</category>
+  </categories>
+
+  <url type="homepage">https://github.com/yeakiniqra/Kapture</url>
+  <url type="bugtracker">https://github.com/yeakiniqra/Kapture/issues</url>
+
+  <!-- Empty OARS rating => "no objectionable content", i.e. suitable for everyone.
+       Add <screenshots> with hosted image URLs to get a screenshot gallery. -->
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="${VERSION}" date="${RELEASE_DATE}"/>
+  </releases>
+</component>
+EOF
+
+# Debian machine-readable copyright — fills the App Center "License" field and
+# satisfies Debian policy. ${LICENSE} (MIT) full text inlined below.
+cat > "${DEB_DIR}/usr/share/doc/${PKG_NAME}/copyright" << EOF
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: ${PKG_NAME}
+Source: https://github.com/yeakiniqra/Kapture
+
+Files: *
+Copyright: $(date +%Y) ${DEVELOPER}
+License: ${LICENSE}
+
+License: MIT
+ Permission is hereby granted, free of charge, to any person obtaining a
+ copy of this software and associated documentation files (the "Software"),
+ to deal in the Software without restriction, including without limitation
+ the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ and/or sell copies of the Software, and to permit persons to whom the
+ Software is furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ DEALINGS IN THE SOFTWARE.
 EOF
 
 # Installed-Size (KiB) — computed from the staged tree, excluding control files.
@@ -109,6 +223,10 @@ if [ "$1" = "configure" ]; then
     fi
     if command -v update-desktop-database >/dev/null 2>&1; then
         update-desktop-database /usr/share/applications 2>/dev/null || true
+    fi
+    # Rebuild the AppStream pool so App Center picks up our metainfo immediately.
+    if command -v appstreamcli >/dev/null 2>&1; then
+        appstreamcli refresh --force 2>/dev/null || true
     fi
 fi
 POSTINST

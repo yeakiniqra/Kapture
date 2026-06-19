@@ -49,7 +49,7 @@ log = logging.getLogger("kapture")
 
 HOTKEYS = ["<print_screen>", "<ctrl>+<shift>+s"]   # All active hotkeys
 APP_NAME = "Kapture"
-VERSION  = "3.0.1"
+VERSION  = "3.0.2"
 AUTHOR   = "Yeakin Iqra"
 
 # Per-user single-instance / remote-trigger socket name.
@@ -1344,7 +1344,7 @@ class AboutDialog(QDialog):
         header.setSpacing(16)
         icon = QLabel()
         icon.setPixmap(
-            QIcon(resource_path(os.path.join('assets', 'icon.png'))).pixmap(60, 60))
+            QIcon(resource_path(os.path.join('assets', 'app-logo.png'))).pixmap(60, 60))
         icon.setFixedSize(60, 60)
         header.addWidget(icon, 0, Qt.AlignTop)
 
@@ -2315,7 +2315,7 @@ def main():
         return
 
     # Set application-wide window icon (taskbar, alt-tab, dialogs)
-    icon_file = resource_path(os.path.join('assets', 'icon.png'))
+    icon_file = resource_path(os.path.join('assets', 'app-logo.png'))
     if os.path.isfile(icon_file):
         app.setWindowIcon(QIcon(icon_file))
         log.debug("main: app icon set from %s", icon_file)

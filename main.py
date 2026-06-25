@@ -388,19 +388,33 @@ class AnnotationWindow(QWidget):
     TOOL_ARROW    = 'arrow'
     TOOL_RECT     = 'rect'
     TOOL_PIXELATE = 'pixelate'
-    TOOLBAR_H  = 52
+    TOOLBAR_H  = 68          # taller bar so the bigger, labelled buttons breathe
     CARD_RADIUS   = 12
     SHADOW_MARGIN = 24     # transparent border around the card for the drop shadow
 
     _last_pos: QPoint = None
 
     # ── stylesheets (modern, flat, accent #00aeff) ────────────────────────────
+    # Labelled tool buttons (icon + word) — the bare glyphs alone were ambiguous,
+    # so each tool now spells out what it does.
+    _TOOL_BTN_CSS = """
+        QPushButton {
+            background: #1b1b2b; color: #d7d7f0;
+            border: 1px solid #2b2b44; border-radius: 9px;
+            padding: 0 16px; font-size: 14px; font-weight: 600;
+            min-height: 44px;
+        }
+        QPushButton:hover   { background: #26263d; color: #ffffff; border-color: #3a3a5e; }
+        QPushButton:pressed { background: #2e2e4a; }
+        QPushButton:checked { background: #00aeff; color: #04121d; border-color: #00aeff; }
+    """
+    # Square icon-only buttons (undo / redo) — larger and easier to hit.
     _ICON_BTN_CSS = """
         QPushButton {
             background: #1b1b2b; color: #d7d7f0;
-            border: 1px solid transparent; border-radius: 8px;
-            font-size: 16px;
-            min-width: 34px; max-width: 34px; min-height: 34px; max-height: 34px;
+            border: 1px solid transparent; border-radius: 9px;
+            font-size: 20px;
+            min-width: 44px; max-width: 44px; min-height: 44px; max-height: 44px;
         }
         QPushButton:hover   { background: #26263d; color: #ffffff; }
         QPushButton:pressed { background: #2e2e4a; }
@@ -410,7 +424,7 @@ class AnnotationWindow(QWidget):
         QPushButton {
             background: #1b1b2b; color: #d7d7f0;
             border: 1px solid #2f2f4d; border-radius: 9px;
-            padding: 6px 16px; font-size: 13px; font-weight: 600;
+            padding: 0 20px; font-size: 14px; font-weight: 600; min-height: 44px;
         }
         QPushButton:hover   { background: #26263d; border-color: #3a3a5e; color: #fff; }
         QPushButton:pressed { background: #2e2e4a; }
@@ -419,7 +433,7 @@ class AnnotationWindow(QWidget):
         QPushButton {
             background: #00aeff; color: #04121d;
             border: 1px solid #00aeff; border-radius: 9px;
-            padding: 6px 18px; font-size: 13px; font-weight: 700;
+            padding: 0 22px; font-size: 14px; font-weight: 700; min-height: 44px;
         }
         QPushButton:hover   { background: #2bbcff; border-color: #2bbcff; }
         QPushButton:pressed { background: #009fe6; }
@@ -528,44 +542,47 @@ class AnnotationWindow(QWidget):
             }}
         """)
         tb = QHBoxLayout(tb_widget)
-        tb.setContentsMargins(12, 8, 12, 8)
-        tb.setSpacing(6)
+        tb.setContentsMargins(16, 10, 16, 10)
+        tb.setSpacing(8)
 
-        # Drawing tools
-        for icon, tool, tip in [("✏", self.TOOL_PEN, "Pen  ·  P"),
-                                ("↗", self.TOOL_ARROW, "Arrow  ·  A"),
-                                ("▭", self.TOOL_RECT, "Rectangle  ·  R"),
-                                ("▦", self.TOOL_PIXELATE, "Pixelate / redact  ·  B")]:
-            btn = QPushButton(icon)
+        # Drawing tools — icon + label so each one says what it does.
+        for icon, label, tool, tip in [
+                ("✏", "Pen",   self.TOOL_PEN,      "Freehand pen  ·  P"),
+                ("↗", "Arrow", self.TOOL_ARROW,    "Arrow  ·  A"),
+                ("▭", "Box",   self.TOOL_RECT,     "Rectangle  ·  R"),
+                ("▦", "Blur",  self.TOOL_PIXELATE, "Pixelate / hide sensitive area  ·  B")]:
+            btn = QPushButton(f"{icon}  {label}")
             btn.setCheckable(True)
             btn.setChecked(tool == self.tool)
             btn.setCursor(Qt.PointingHandCursor)
-            btn.setStyleSheet(self._ICON_BTN_CSS)
+            btn.setStyleSheet(self._TOOL_BTN_CSS)
             btn.setToolTip(tip)
             btn.clicked.connect(lambda _, t=tool: self._select_tool(t))
             self._tool_btns[tool] = btn
             tb.addWidget(btn)
 
+        tb.addWidget(self._separator())
+
         # Colour swatch
         self.color_btn = QPushButton()
-        self.color_btn.setFixedSize(34, 34)
+        self.color_btn.setFixedSize(44, 44)
         self.color_btn.setCursor(Qt.PointingHandCursor)
-        self.color_btn.setToolTip("Pick colour")
+        self.color_btn.setToolTip("Pick annotation colour")
         self.color_btn.clicked.connect(self._pick_color)
         self._refresh_color_btn()
         tb.addWidget(self.color_btn)
 
         tb.addWidget(self._separator())
 
-        # Undo / Redo
-        self.undo_btn = QPushButton("⟲")
+        # Undo / Redo (clearer curved-arrow glyphs)
+        self.undo_btn = QPushButton("↶")
         self.undo_btn.setCursor(Qt.PointingHandCursor)
         self.undo_btn.setStyleSheet(self._ICON_BTN_CSS)
         self.undo_btn.setToolTip("Undo  ·  Ctrl+Z")
         self.undo_btn.clicked.connect(self._undo)
         tb.addWidget(self.undo_btn)
 
-        self.redo_btn = QPushButton("⟳")
+        self.redo_btn = QPushButton("↷")
         self.redo_btn.setCursor(Qt.PointingHandCursor)
         self.redo_btn.setStyleSheet(self._ICON_BTN_CSS)
         self.redo_btn.setToolTip("Redo  ·  Ctrl+Shift+Z")
@@ -620,7 +637,7 @@ class AnnotationWindow(QWidget):
         line = QFrame()
         line.setFrameShape(QFrame.VLine)
         line.setFixedWidth(1)
-        line.setStyleSheet("background: #26263d; border: none; margin: 5px 3px;")
+        line.setStyleSheet("background: #2b2b44; border: none; margin: 8px 6px;")
         return line
 
     def _install_shortcuts(self):
@@ -661,8 +678,8 @@ class AnnotationWindow(QWidget):
         self.color_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {self.color.name()};
-                border: 2px solid #2f2f4d; border-radius: 8px;
-                min-width: 34px; max-width: 34px; min-height: 34px; max-height: 34px;
+                border: 2px solid #2f2f4d; border-radius: 9px;
+                min-width: 44px; max-width: 44px; min-height: 44px; max-height: 44px;
             }}
             QPushButton:hover {{ border-color: #00aeff; }}
         """)
@@ -2149,6 +2166,19 @@ class TrayApp(QSystemTrayIcon):
     def _gs_set(args):
         subprocess.run(["gsettings", "set"] + args, timeout=5)
 
+    @staticmethod
+    def _gv_str(s: str) -> str:
+        """Serialize a Python string into a GVariant string literal that
+        `gsettings set` parses as exactly that string.
+
+        `gsettings set ... command "/usr/bin/kapture" --capture` FAILS: gsettings
+        reads a value that begins with a quote as a GVariant string and then trips
+        over the trailing text ("expected end of input"), so the command silently
+        never gets stored — the custom keybinding ends up doing nothing. Wrapping
+        the whole value in escaped double quotes makes it an unambiguous literal.
+        """
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
     @classmethod
     def _register_custom_keybinding(cls, slug, name, command, binding):
         import ast
@@ -2168,9 +2198,11 @@ class TrayApp(QSystemTrayIcon):
                          "[" + ", ".join("'%s'" % p for p in paths) + "]"])
         schema = ("org.gnome.settings-daemon.plugins.media-keys."
                   "custom-keybinding:" + path)
-        cls._gs_set([schema, "name", name])
-        cls._gs_set([schema, "command", command])
-        cls._gs_set([schema, "binding", binding])
+        # Serialize as GVariant string literals — `name`/`command` contain spaces
+        # and quotes that gsettings would otherwise misparse (see _gv_str).
+        cls._gs_set([schema, "name", cls._gv_str(name)])
+        cls._gs_set([schema, "command", cls._gv_str(command)])
+        cls._gs_set([schema, "binding", cls._gv_str(binding)])
 
     # GNOME's own screenshot accelerators that can collide with `Print`.
     _GNOME_SS_KEYS = ("show-screenshot-ui", "screenshot", "screenshot-window")

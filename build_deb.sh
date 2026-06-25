@@ -38,6 +38,7 @@ rm -rf "${DEB_DIR}"
 mkdir -p "${DEB_DIR}/DEBIAN"
 mkdir -p "${DEB_DIR}/usr/bin"
 mkdir -p "${DEB_DIR}/usr/share/applications"
+mkdir -p "${DEB_DIR}/etc/xdg/autostart"
 mkdir -p "${DEB_DIR}/usr/share/icons/hicolor/256x256/apps"
 mkdir -p "${DEB_DIR}/usr/share/icons/hicolor/512x512/apps"
 mkdir -p "${DEB_DIR}/usr/share/pixmaps"
@@ -92,6 +93,24 @@ Categories=Graphics;Utility;
 Keywords=screenshot;capture;annotation;snip;
 Terminal=false
 StartupNotify=false
+EOF
+
+# Autostart entry — start the tray daemon at login so the global capture shortcut
+# forwards to a running instance instantly (instead of cold-starting Kapture on
+# every key press). This is how Flameshot/Shutter stay responsive on Wayland,
+# where the shortcut must launch a command rather than grab a global hotkey.
+cat > "${DEB_DIR}/etc/xdg/autostart/${APP_ID}.desktop" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kapture
+Comment=Start Kapture in the system tray
+Exec=kapture
+Icon=${APP_ID}
+Categories=Graphics;Utility;
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
 EOF
 
 # AppStream MetaInfo — THIS is what App Center reads for the icon, the developer

@@ -47,9 +47,14 @@ log = logging.getLogger("kapture")
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
-HOTKEYS = ["<print_screen>", "<ctrl>+<shift>+s"]   # All active hotkeys
+# X11-only fallback hotkeys (pynput). On Wayland these are inert — global key
+# grabbing is impossible for an unprivileged app, so the GNOME custom keybinding
+# (org.gnome.settings-daemon ... custom-keybindings) does the work there instead.
+# Print is deliberately NOT here: Kapture no longer fights GNOME for the Print key;
+# the native GNOME screenshot keeps it unless the user opts in via Settings.
+HOTKEYS = ["<ctrl>+<shift>+s"]
 APP_NAME = "Kapture"
-VERSION  = "3.0.2"
+VERSION  = "3.1.0"
 AUTHOR   = "Yeakin Iqra"
 
 # Per-user single-instance / remote-trigger socket name.
@@ -65,7 +70,10 @@ _GNOME_SS_BACKUP = os.path.expanduser("~/.config/kapture/gnome_screenshot_backup
 _CONFIG_DEFAULTS = {
     "save_dir": os.path.expanduser("~/Pictures"),
     "auto_save": False,                 # Save without showing the file dialog
-    "capture_binding": "Print",         # GNOME accelerator for the global shortcut
+    # GNOME accelerator for the capture shortcut. Default is Ctrl+Shift+S so we
+    # never displace GNOME's native Print screenshot; the user can switch to Print
+    # (or any key) in Settings, which is the explicit opt-in to take it over.
+    "capture_binding": "<Control><Shift>s",
 }
 
 
@@ -99,8 +107,21 @@ CONFIG = load_config()
 # startup notification to disappear so they don't land in the screenshot.
 CAPTURE_DELAY_MS = 150
 
-# Human-readable hotkey string used in UI labels
-_HOTKEY_DISPLAY = " / ".join(HOTKEYS)
+# Pretty names for GNOME accelerators, shared by the tray UI and Settings dialog.
+_BINDING_LABELS = {
+    "Print":             "Print Screen",
+    "<Control><Shift>s": "Ctrl+Shift+S",
+    "<Control>Print":    "Ctrl+Print Screen",
+    "<Super><Shift>s":   "Super+Shift+S",
+}
+
+
+def _binding_label(binding: str) -> str:
+    return _BINDING_LABELS.get(binding, binding)
+
+
+# Human-readable hotkey string used in UI labels (reflects the configured binding).
+_HOTKEY_DISPLAY = _binding_label(CONFIG.get("capture_binding", "<Control><Shift>s"))
 
 
 # ─── RESOURCE PATH (dev + PyInstaller) ────────────────────────────────────────
@@ -1604,10 +1625,16 @@ class SettingsDialog(QDialog):
         self.combo.setStyleSheet(self._COMBO_CSS)
         for label, _b in self._SHORTCUTS:
             self.combo.addItem(label)
-        cur = CONFIG.get("capture_binding", "Print")
+        cur = CONFIG.get("capture_binding", "<Control><Shift>s")
         self.combo.setCurrentIndex(
-            next((i for i, (_l, b) in enumerate(self._SHORTCUTS) if b == cur), 0))
+            next((i for i, (_l, b) in enumerate(self._SHORTCUTS) if b == cur), 1))
         v.addWidget(self.combo)
+
+        hint = QLabel("Choosing “Print Screen” replaces GNOME’s built-in "
+                      "screenshot shortcut. It’s restored if you switch back.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #8a8aa8; font-size: 11px; background: transparent;")
+        v.addWidget(hint)
 
         # Save folder
         v.addWidget(self._field_label("Save folder"))
@@ -1724,7 +1751,10 @@ class TrayApp(QSystemTrayIcon):
         # On GNOME Wayland, make sure the flash-free Shell helper is enabled.
         self._ensure_capture_helper()
 
-        # Register Print Screen → Kapture via a GNOME custom shortcut (once).
+        # Upgrade cleanup: older Kapture stole GNOME's Print key by default.
+        self._migrate_print_ownership()
+        # Keep the GNOME custom keybinding in sync every launch (idempotent);
+        # the "shortcut is set" hint is only shown the first time.
         self._maybe_setup_shortcuts()
 
         self._notify_ready()
@@ -2095,11 +2125,15 @@ class TrayApp(QSystemTrayIcon):
         if not shutil.which("gsettings"):
             return False
         cmd = self._launch_command()
-        binding = CONFIG.get("capture_binding", "Print")
+        binding = CONFIG.get("capture_binding", "<Control><Shift>s")
         try:
             self._register_custom_keybinding("kapture", "Kapture — Capture", cmd, binding)
+            # Only displace GNOME's native screenshot when the user explicitly
+            # picked Print; every other binding leaves GNOME's keys untouched.
             if binding == "Print":
                 self._free_gnome_print()
+            else:
+                self._restore_gnome_screenshot()
             log.info("_setup_gnome_shortcuts: %s now launches Kapture", binding)
             return True
         except Exception as e:
@@ -2205,7 +2239,13 @@ class TrayApp(QSystemTrayIcon):
         if present, otherwise falls back to GNOME's factory defaults. Called when
         Kapture stops owning `Print` (hotkey changed away, or on uninstall)."""
         import json
-        # GNOME factory defaults — the safety net when no backup exists.
+        # No backup => Kapture never took Print, so there is nothing to restore.
+        # Returning here avoids clobbering the user's own GNOME screenshot keys
+        # with factory defaults on every launch.
+        if not os.path.exists(_GNOME_SS_BACKUP):
+            log.debug("_restore_gnome_screenshot: no backup, nothing to restore")
+            return
+        # GNOME factory defaults — the safety net when the backup is unreadable.
         defaults = {
             "show-screenshot-ui": ["Print"],
             "screenshot": ["<Shift>Print"],
@@ -2230,22 +2270,34 @@ class TrayApp(QSystemTrayIcon):
         except OSError:
             pass
 
+    def _migrate_print_ownership(self):
+        """One-time cleanup for users upgrading from the version that took GNOME's
+        Print key by default. If Kapture is no longer bound to Print but a backup
+        from that era exists, hand GNOME's screenshot keybindings back so the
+        native Print screenshot works again."""
+        if (CONFIG.get("capture_binding", "<Control><Shift>s") != "Print"
+                and os.path.exists(_GNOME_SS_BACKUP)):
+            log.info("_migrate_print_ownership: restoring GNOME's Print screenshot")
+            self._restore_gnome_screenshot()
+
     def _maybe_setup_shortcuts(self):
-        """Run the GNOME shortcut setup once per machine (stamped)."""
+        """Register/refresh the GNOME custom keybinding on every launch (idempotent
+        — re-applying the same binding is harmless), and show a one-time hint the
+        first time it's set so the user knows which key now captures."""
+        ok = self._setup_gnome_shortcuts()
         stamp = os.path.expanduser("~/.cache/kapture/shortcuts_set")
-        if os.path.exists(stamp):
-            return
-        if self._setup_gnome_shortcuts():
+        if ok and not os.path.exists(stamp):
+            label = _binding_label(CONFIG.get("capture_binding", "<Control><Shift>s"))
             self.showMessage(
                 APP_NAME,
-                "Print Screen now opens Kapture. (Change it anytime in "
-                "Settings → Keyboard → Shortcuts.)",
+                f"{label} now captures with Kapture. "
+                "Change it anytime in tray → Settings.",
                 QSystemTrayIcon.Information, 6000)
-        try:
-            os.makedirs(os.path.dirname(stamp), exist_ok=True)
-            open(stamp, "w").close()
-        except OSError:
-            pass
+            try:
+                os.makedirs(os.path.dirname(stamp), exist_ok=True)
+                open(stamp, "w").close()
+            except OSError:
+                pass
 
     def _setup_shortcuts_interactive(self):
         ok = self._setup_gnome_shortcuts()

@@ -22,14 +22,14 @@
   <meta property="og:url" content="https://yeakiniqra.github.io/Kapture/">
   <meta property="og:title" content="Kapture – Free Linux Screenshot Tool for Ubuntu">
   <meta property="og:description" content="Select any region, annotate, then copy or save instantly. Flash-free native capture on Ubuntu 20.04+ (X11 &amp; Wayland). Free one-click .deb — no external tools.">
-  <meta property="og:image" content="https://yeakiniqra.github.io/Kapture/assets/app-logo.png">
+  <meta property="og:image" content="https://yeakiniqra.github.io/Kapture/assets/screenshots/hero.png">
   <meta property="og:site_name" content="Kapture">
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Kapture – Free Linux Screenshot Tool for Ubuntu">
   <meta name="twitter:description" content="Select any region, annotate, then copy or save instantly. Flash-free native capture on Ubuntu 20.04+ (X11 &amp; Wayland). Free one-click .deb — no external tools.">
-  <meta name="twitter:image" content="https://yeakiniqra.github.io/Kapture/assets/app-logo.png">
+  <meta name="twitter:image" content="https://yeakiniqra.github.io/Kapture/assets/screenshots/hero.png">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -236,6 +236,24 @@
     .feat-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
     .feat-card p  { font-size: 13px; color: var(--text-muted); line-height: 1.55; }
 
+    /* ── SCREENSHOTS ───────────────────────────────────────────── */
+    .shot {
+      display: block; width: 100%; height: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 40px rgba(26,23,20,.14);
+    }
+    .hero-shot { max-width: 1040px; margin: 0 auto; padding: 0 32px 72px; }
+    .shot-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 28px;
+    }
+    .shot-grid figure:first-child { grid-column: 1 / -1; }
+    .shot-grid figcaption {
+      font-size: 14px; color: var(--text-muted);
+      margin-top: 12px; line-height: 1.55;
+    }
+    .shot-grid figcaption strong { color: var(--text); font-weight: 600; }
+
     /* ── INSTALL ───────────────────────────────────────────────── */
     .install-layout {
       display: grid;
@@ -348,6 +366,7 @@
     @media (max-width: 820px) {
       .install-layout { grid-template-columns: 1fr; }
       .feat-grid { grid-template-columns: 1fr 1fr; }
+      .shot-grid { grid-template-columns: 1fr; }
       .hero h1 { font-size: 38px; letter-spacing: -1px; }
       .hero-sub { font-size: 16px; }
     }
@@ -369,8 +388,8 @@
     "operatingSystem": "Ubuntu, Linux",
     "applicationCategory": "UtilitiesApplication",
     "description": "A free, open-source Linux screenshot tool for Ubuntu. Select any screen region, annotate with pen, arrows, shapes and pixelate redaction, undo/redo your edits, then copy or save instantly. Flash-free native capture on X11 and Wayland with no external screenshot tools. Configurable hotkey, save folder and auto-save. Runs silently in the system tray.",
-    "softwareVersion": "3.1.0",
-    "datePublished": "2026-06-25",
+    "softwareVersion": "4.0.0",
+    "datePublished": "2026-10-05",
     "author": {
       "@type": "Person",
       "name": "Yeakin Iqra",
@@ -378,9 +397,9 @@
     },
     "license": "https://opensource.org/licenses/MIT",
     "url": "https://yeakiniqra.github.io/Kapture/",
-    "downloadUrl": "https://github.com/yeakiniqra/Kapture/releases/tag/v3.1.0",
-    "installUrl": "https://github.com/yeakiniqra/Kapture/releases/tag/v3.1.0",
-    "screenshot": "https://yeakiniqra.github.io/Kapture/assets/app-logo.png",
+    "downloadUrl": "https://github.com/yeakiniqra/Kapture/releases/tag/v4.0.0",
+    "installUrl": "https://github.com/yeakiniqra/Kapture/releases/tag/v4.0.0",
+    "screenshot": "https://yeakiniqra.github.io/Kapture/assets/screenshots/hero.png",
     "offers": {
       "@type": "Offer",
       "price": "0",
@@ -401,15 +420,16 @@
     </a>
     <div class="nav-links">
       <a href="#features">Features</a>
+      <a href="#screenshots">Screenshots</a>
       <a href="#install">Install</a>
       <a href="https://github.com/yeakiniqra/Kapture" target="_blank">GitHub</a>
     </div>
-    <a href="https://github.com/yeakiniqra/Kapture/releases/tag/v3.1.0" class="nav-cta">
+    <a href="https://github.com/yeakiniqra/Kapture/releases/tag/v4.0.0" class="nav-cta">
       <!-- heroicons: arrow-down-tray -->
       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
       </svg>
-      Download v3.1.0
+      Download v4.0.0
     </a>
   </div>
 </nav>
@@ -422,18 +442,18 @@
       <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z" />
       <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6Z" />
     </svg>
-    v3.1.0 — Pixelate, Settings &amp; Undo
+    v4.0.0 — Text, Pin &amp; a New Look
   </div>
 
   <h1>Capture. Annotate.<br><em>Redact. Copy or save.</em></h1>
   <p class="hero-sub">A Lightshot-style <strong>Linux screenshot tool</strong> built for Ubuntu. Select any region, mark it up with pen, arrows, shapes &amp; <strong>pixelate redaction</strong>, undo any step, then copy or save in one click — with <strong>flash-free</strong> native capture and <strong>no external tools</strong> to install.</p>
 
   <div class="hero-actions">
-    <a href="https://github.com/yeakiniqra/Kapture/releases/tag/v3.1.0" class="btn btn-primary">
+    <a href="https://github.com/yeakiniqra/Kapture/releases/tag/v4.0.0" class="btn btn-primary">
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
       </svg>
-      Download .deb (v3.1.0)
+      Download .deb (v4.0.0)
     </a>
     <a href="https://github.com/yeakiniqra/Kapture" target="_blank" class="btn btn-outline">
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
@@ -443,6 +463,11 @@
     </a>
   </div>
 </section>
+
+<div class="hero-shot">
+  <img class="shot" src="assets/screenshots/hero.png" width="1440" height="900"
+       alt="Kapture's annotation editor over a billing page: email and address pixelated, plan highlighted, numbered steps, an arrow and a text label">
+</div>
 
 <div class="sep"><hr></div>
 
@@ -548,6 +573,32 @@
 
 <div class="sep"><hr></div>
 
+<!-- ── SCREENSHOTS ──────────────────────────────────────────────── -->
+<section class="section" id="screenshots">
+  <p class="section-eyebrow">Screenshots</p>
+  <h2 class="section-title">See it in action</h2>
+  <p class="section-desc">Rendered straight from the app — light and dark themes follow your Ubuntu appearance setting.</p>
+  <div class="shot-grid">
+    <figure>
+      <img class="shot" src="assets/screenshots/overlay.png" width="1440" height="900" loading="lazy"
+           alt="Region selection over a dimmed, frozen screen with a live size readout">
+      <figcaption><strong>Select a region.</strong> The screen freezes and dims — drag to select (copied instantly), or press Enter for the whole screen.</figcaption>
+    </figure>
+    <figure>
+      <img class="shot" src="assets/screenshots/editor-light.png" width="1004" height="460" loading="lazy"
+           alt="The annotation editor in the light theme">
+      <figcaption><strong>Annotate.</strong> Pen, highlighter, arrow, box, text, numbered steps and pixelate redaction.</figcaption>
+    </figure>
+    <figure>
+      <img class="shot" src="assets/screenshots/tray-settings.png" width="895" height="571" loading="lazy"
+           alt="The tray menu next to the Settings dialog">
+      <figcaption><strong>Tray &amp; settings.</strong> Region, full-screen or delayed capture; pick your shortcut and save folder.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<div class="sep"><hr></div>
+
 <!-- ── INSTALL ───────────────────────────────────────────────────── -->
 <section class="section" id="install">
   <p class="section-eyebrow">Get started</p>
@@ -578,7 +629,7 @@
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
               </button>
             </div>
-            <div class="term-code"><span class="cd">sudo</span> dpkg -i kapture_3.1.0_amd64.deb
+            <div class="term-code"><span class="cd">sudo</span> dpkg -i kapture_4.0.0_amd64.deb
 <span class="cm"># if apt reports missing dependencies:</span>
 <span class="cd">sudo</span> apt -f install</div>
           </div>
@@ -746,8 +797,8 @@ gnome-extensions list <span class="fl">|</span> grep kapture</div>
       Kapture
     </a>
     <p>&copy; 2026 <a href="https://github.com/yeakiniqra" target="_blank">Yeakin Iqra</a>. Released under the MIT License.</p>
-    <a href="https://github.com/yeakiniqra/Kapture/releases/tag/v3.1.0" class="btn btn-primary" style="font-size:13px; padding:8px 20px;">
-      Download v3.1.0
+    <a href="https://github.com/yeakiniqra/Kapture/releases/tag/v4.0.0" class="btn btn-primary" style="font-size:13px; padding:8px 20px;">
+      Download v4.0.0
     </a>
   </div>
 </footer>

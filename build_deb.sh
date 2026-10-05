@@ -3,9 +3,9 @@
 # Usage: bash build_deb.sh
 set -euo pipefail
 
-# ─── Config (auto-read VERSION from main.py) ──────────────────────────────────
+# ─── Config (auto-read VERSION from kapture/__init__.py) ──────────────────────
 PKG_NAME="kapture"
-VERSION=$(grep -oP 'VERSION\s*=\s*"\K[^"]+' main.py)
+VERSION=$(grep -oP 'VERSION\s*=\s*"\K[^"]+' kapture/__init__.py)
 MAINTAINER="Yeakin Iqra"
 DEVELOPER="Yeakin Iqra"                 # shown as the App Center publisher/developer
 DESCRIPTION="Lightshot-style screenshot tool for Ubuntu"
@@ -218,7 +218,7 @@ Priority: optional
 Architecture: ${ARCH}
 Maintainer: ${MAINTAINER}
 Installed-Size: ${INSTALLED_SIZE}
-Depends: libc6, libxcb-xinerama0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-cursor0, libfontconfig1, libegl1
+Depends: libc6, libxcb-xinerama0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-cursor0, libxcb-shape0, libxcb-xkb1, libxkbcommon-x11-0, libfontconfig1, libegl1
 Recommends: xdg-desktop-portal-gnome | xdg-desktop-portal | grim
 Homepage: https://github.com/yeakiniqra/Kapture
 Description: ${DESCRIPTION}

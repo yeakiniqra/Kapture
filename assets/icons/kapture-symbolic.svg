@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Tray glyph on GNOME's 16px symbolic grid: open selection frame + pointer. -->
+  <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
+        d="M2 5.5V4a2 2 0 0 1 2-2h1.5M9 2h3a2 2 0 0 1 2 2v1.5M5.5 14H4a2 2 0 0 1-2-2V9"/>
+  <path fill="currentColor" d="M8 7.2v7.6l2-1.9 1.4 2.8 1.8-.9-1.4-2.7h2.9z"/>
+</svg>

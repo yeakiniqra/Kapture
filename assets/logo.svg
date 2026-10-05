@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Kapture app icon: Yaru-proportioned rounded square, crop frame + lens. -->
+  <rect x="40" y="40" width="432" height="432" rx="96" fill="#27233A"/>
+  <path d="M140 210V164a24 24 0 0 1 24-24h46M302 140h46a24 24 0 0 1 24 24v46M372 302v46a24 24 0 0 1-24 24h-46M210 372h-46a24 24 0 0 1-24-24v-46"
+        fill="none" stroke="#EAEFD3" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="256" cy="256" r="34" fill="#DCC48E"/>
+</svg>

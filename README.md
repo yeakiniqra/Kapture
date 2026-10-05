@@ -3,6 +3,27 @@
 
 # Kapture — Lightshot-style screenshot tool for Ubuntu
 
+![Kapture's annotation editor floating over a billing page, with pixelated email and address, a highlighted plan, numbered steps, an arrow and a text label](assets/screenshots/hero.png)
+
+## Screenshots
+
+**Select a region** — the screen freezes and dims; drag to select (it's copied instantly), `Enter` grabs the whole screen.
+
+![Region selection over a dimmed screen with a live size readout](assets/screenshots/overlay.png)
+
+**Annotate** — pen, highlighter, arrow, box, text, numbered steps and pixelate redaction. Follows your light / dark theme.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/editor-dark.png">
+  <img alt="The annotation editor and its toolbar" src="assets/screenshots/editor-light.png">
+</picture>
+
+**Tray & settings** — region, full-screen and delayed capture, your screenshots folder, shortcut and save options.
+
+![The tray menu and the Settings dialog](assets/screenshots/tray-settings.png)
+
+> Screenshots are rendered from the real UI by `scripts/screenshots.py` — re-run it after UI changes.
+
 ## Installation
 
 ### For Users — install the .deb package (recommended)
@@ -17,7 +38,7 @@ Just like installing Discord or VS Code — one file, done. No Python or termina
 
 **Step 1 — Download the .deb**
 
-Go to the [Releases page](https://github.com/yeakiniqra/Kapture/releases/tag/v3.0.1) and download `kapture_3.0.1_amd64.deb`.
+Go to the [Releases page](https://github.com/yeakiniqra/Kapture/releases/tag/v4.0.0) and download `kapture_4.0.0_amd64.deb`.
 
 ---
 
@@ -29,7 +50,7 @@ It will open in GNOME Software / GDebi. Click **Install** and enter your passwor
 **Option B — Terminal**
 
 ```bash
-sudo dpkg -i kapture_3.0.1_amd64.deb
+sudo dpkg -i kapture_4.0.0_amd64.deb
 # if apt reports missing dependencies, pull them in with:
 sudo apt -f install
 ```
@@ -104,22 +125,50 @@ sudo apt install dpkg-dev
 bash build_deb.sh
 ```
 
-Output: `kapture_3.0.1_amd64.deb` — ready to share or install.
+Output: `kapture_<version>_amd64.deb` (version read from `kapture/__init__.py`) — ready to share or install.
+
+### Project structure
+
+```
+main.py                 launcher (PyInstaller entry + GNOME shortcut target)
+kapture/
+  app.py                startup: environment, single instance, Qt + asyncio loop
+  tray.py               tray menu, capture flow, hotkeys, IPC
+  capture.py            capture backends (X11 grab, Shell helper, portal, grim)
+  gnome.py              GNOME keybinding / Print-key handover / helper setup
+  dbus.py               session-bus helpers (jeepney)
+  config.py             settings file, constants, resource paths
+  theme.py              colour tokens, fonts, stylesheets (light + dark)
+  icons.py              Lucide SVG icons tinted to the theme
+  ui/overlay.py         region picker
+  ui/editor.py          annotation editor
+  ui/pin.py             pinned screenshots
+  ui/dialogs.py         About, Settings, helper setup, errors
+  ui/widgets.py         shared buttons, labels, card dialog
+assets/                 logo, fonts (DM Sans / DM Mono), icons (Lucide)
+extension/              GNOME Shell helper for flash-free Wayland capture
+```
 
 ## Usage
 
 1. Press `Print Screen` or `Ctrl+Shift+S` — the screen dims and your cursor becomes a crosshair
 2. Click and drag to select a region
-3. Release to confirm the selection — the captured area lifts off the background with a drop shadow and the annotation toolbar appears
+3. Release to confirm the selection (it's copied to the clipboard right away) and the editor opens — or press `Enter` to grab the whole screen instead
 4. Use the annotation tools to mark up the screenshot:
-   - **Pen** — freehand drawing
-   - **Arrow** — draw directional arrows
-   - **Box** — draw rectangles
-   - **Pixelate** — drag over anything sensitive to redact it; the pixels are baked into the image so they can't be recovered
-   - **Color picker** — choose pen/arrow/box color
-   - **Undo / Redo** — step back and forth through your edits (`Ctrl+Z` / `Ctrl+Shift+Z`)
-5. Click **Copy** to put the result on the clipboard, or **Save** to write a PNG
-6. Close the editor with the **✕** in the top-right corner of the window
+   - **Pen** `P` — freehand drawing
+   - **Highlighter** `H` — translucent marker
+   - **Arrow** `A` — directional arrows
+   - **Box** `R` — rectangles
+   - **Text** `T` — click, type, `Enter` to place (`Esc` cancels)
+   - **Numbered steps** `N` — click to drop 1, 2, 3… badges
+   - **Pixelate** `B` — drag over anything sensitive; the pixels are baked in and can't be recovered
+   - **Stroke size** `[` `]` — small / medium / large (also sets text size)
+   - **Colour** — quick swatches or a custom colour; remembered between captures
+   - **Undo / Redo** — `Ctrl+Z` / `Ctrl+Shift+Z`
+5. **Copy** (`Ctrl+C`), **Save** (`Ctrl+S`), or **Pin** (`Ctrl+P`) to float the shot on screen as an always-on-top reference (drag to move, scroll to zoom, double-click to close)
+6. Close the editor with `Esc` or the **✕** in the top-right corner
+
+From the tray you can also **Capture Full Screen** (saved to your folder and copied), **Capture Region in 3 s** (for menus and hover states), and **Open Screenshots Folder**.
 
 ## Settings
 
@@ -132,8 +181,11 @@ Settings persist in `~/.config/kapture/config.json`.
 
 ## Features
 - Drag to select any region on screen
-- Dimmed overlay with live selection size indicator and an accent glow that lifts the selection off the background
-- Annotation tools: pen/marker, arrow, rectangle, **pixelate redaction**, color picker
+- Dimmed overlay with a live selection size readout; `Enter` captures the full screen
+- Annotation tools: pen, highlighter, arrow, box, **text**, **numbered steps**, **pixelate redaction**, stroke sizes, colour swatches
+- **Pin to screen** — keep a screenshot floating on top as a reference
+- Full-screen and 3-second-delay capture from the tray
+- Light and dark themes that follow your GNOME appearance setting
 - **Undo / redo** with full history
 - Auto-copy to clipboard on selection, plus explicit **Copy** and **Save** buttons
 - Save as PNG, with optional **auto-save** to a chosen folder
@@ -145,6 +197,14 @@ Settings persist in `~/.config/kapture/config.json`.
 - Ships a small GNOME Shell extension (`kapture-screenshot@yeakiniqra.github.io`) installed and registered by the `.deb`; activate with one log out/in
 
 ## Changelog
+
+### v4.0.0
+- **Rebuilt on Qt 6 (PySide6)** and split the single `main.py` into a `kapture` package
+- **New tools:** text, highlighter, numbered steps, stroke sizes, colour swatches
+- **Pin to screen**, **full-screen capture** (tray or `Enter` in the overlay), **3-second delayed capture**, **Open Screenshots Folder**
+- **New look:** flat monochrome design with light/dark themes that follow GNOME, DM Sans / DM Mono type, Lucide line icons, and a new minimal app icon
+- Very large selections now scale to fit the screen in the editor; sharp on HiDPI displays
+- D-Bus moved to `jeepney` (pure Python)
 
 ### v3.0.1
 - **Fixed: Print Screen capture no longer permanently disables GNOME's built-in screenshot.** Earlier versions stripped `Print` from GNOME's `show-screenshot-ui` keybinding to claim it, but never restored it. Kapture now **backs up** GNOME's screenshot keybindings before borrowing `Print` and **restores** them automatically when you change the capture hotkey to something else or uninstall the package (falling back to GNOME's factory defaults if no backup is found).

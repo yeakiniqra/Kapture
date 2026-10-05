@@ -1,8 +1,10 @@
 # ── Kapture runtime dependencies ──────────────────────────────────────────────
-# GUI + native capture (QtDBus, used for the Wayland portal, ships inside PyQt5).
-PyQt5==5.15.11
-PyQt5-Qt5==5.15.19
-PyQt5_sip==12.18.0
+# GUI (Qt 6). Essentials = QtCore/Gui/Widgets/Svg/Network — all Kapture uses.
+PySide6-Essentials==6.11.2
+shiboken6==6.11.2
+# Session D-Bus (GNOME helper, XDG portal). Pure Python; replaces QtDBus, which
+# in PySide6 can't decode the portal's a{sv} replies.
+jeepney==0.9.0
 # asyncio <-> Qt event-loop bridge.
 qasync==0.28.0
 # Global hotkeys (pynput pulls in python-xlib / evdev on Linux).

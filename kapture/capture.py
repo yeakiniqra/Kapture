@@ -1,5 +1,6 @@
 """Native full-desktop capture — no external screenshot binaries.
 
+    Windows                     ->  QScreen.grabWindow per monitor, composited
     X11 / XWayland-backed grab  ->  QScreen.grabWindow        (instant, no flash)
     GNOME Wayland               ->  Kapture Shell extension    (flash-free)
     GNOME Wayland (older)       ->  org.gnome.Shell.Screenshot (flash-free where allowed)
@@ -17,13 +18,12 @@ import subprocess
 import tempfile
 from urllib.parse import unquote, urlparse
 
-from jeepney import MatchRule, message_bus, new_method_call
-from jeepney.io.blocking import Proxy, open_dbus_connection
-from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QGuiApplication, QImage, QPixmap
+from PySide6.QtCore import QRect, QRectF, Qt
+from PySide6.QtGui import QGuiApplication, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QWidget
 
 from kapture import dbus
+from kapture.config import WINDOWS
 
 log = logging.getLogger("kapture")
 
@@ -142,6 +142,8 @@ class ScreenshotEngine:
             return None
         self._busy = True
         try:
+            if WINDOWS:
+                return self._composite_grab()
             if not session_is_wayland():
                 return self._x11_grab()
             # Wayland capture order, best UX first. Never a silent black grabWindow.
@@ -151,7 +153,7 @@ class ScreenshotEngine:
                 image = await asyncio.to_thread(backend)
                 if image is not None:
                     return _wrap(QPixmap.fromImage(image))
-            if dbus.has_owner(PORTAL.bus_name):
+            if dbus.has_owner(PORTAL[1]):
                 try:
                     return await self._portal()
                 except Exception as e:
@@ -181,6 +183,32 @@ class ScreenshotEngine:
         return CaptureResult(pixmap, geo, dpr)
 
     @staticmethod
+    def _composite_grab() -> 'CaptureResult | None':
+        """Windows: QScreen.grabWindow(0) only covers that QScreen, so grab each
+        monitor and composite them onto the virtual desktop at the primary DPR."""
+        primary = QGuiApplication.primaryScreen()
+        if primary is None:
+            return None
+        geo, dpr = primary.virtualGeometry(), primary.devicePixelRatio()
+        canvas = QPixmap(round(geo.width() * dpr), round(geo.height() * dpr))
+        canvas.fill(Qt.GlobalColor.black)
+        p = QPainter(canvas)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        for screen in QGuiApplication.screens():
+            grab = screen.grabWindow(0)
+            if grab.isNull():
+                log.warning("_composite_grab: null grab from %s", screen.name())
+                continue
+            r = screen.geometry().translated(-geo.topLeft())
+            # ponytail: one DPR for the whole desktop — a monitor with a different
+            # scale is resampled; per-screen overlays would be exact.
+            p.drawPixmap(QRectF(r.x() * dpr, r.y() * dpr, r.width() * dpr, r.height() * dpr),
+                         grab, QRectF(grab.rect()))
+        p.end()
+        canvas.setDevicePixelRatio(dpr)
+        return CaptureResult(canvas, geo, dpr)
+
+    @staticmethod
     def _extension() -> 'QImage | None':
         """Flash-free capture via Kapture's GNOME Shell extension. None if the
         helper isn't loaded yet (no relogin since install) so the portal takes over."""
@@ -192,7 +220,7 @@ class ScreenshotEngine:
     def _gnome_shell() -> 'QImage | None':
         """org.gnome.Shell.Screenshot(include_cursor, flash, filename) with
         flash=False. Refused on GNOME 41+ for unconfined apps → None."""
-        if not dbus.has_owner(GNOME_SHELL.bus_name):
+        if not dbus.has_owner(GNOME_SHELL[1]):
             return None
         return _via_tempfile(
             lambda tmp: dbus.call(GNOME_SHELL, "Screenshot", "bbs", (False, False, tmp))[0])
@@ -253,6 +281,9 @@ class ScreenshotEngine:
 
 def _portal_request(parent: str, token: str) -> tuple:
     """Screenshot(parent, a{sv}) → wait for Request.Response(u, a{sv})."""
+    from jeepney import DBusAddress, MatchRule, message_bus, new_method_call
+    from jeepney.io.blocking import Proxy, open_dbus_connection
+    portal = DBusAddress(PORTAL[0], bus_name=PORTAL[1], interface=PORTAL[2])
     with open_dbus_connection(bus="SESSION") as conn:
         sender = conn.unique_name.lstrip(":").replace(".", "_")
         # The Request path is deterministic (xdg-desktop-portal spec): subscribe
@@ -265,5 +296,5 @@ def _portal_request(parent: str, token: str) -> tuple:
                        "interactive": ("b", False),    # whole screen, no picker UI
                        "modal": ("b", False)}
             conn.send_and_get_reply(
-                new_method_call(PORTAL, "Screenshot", "sa{sv}", (parent, options)), timeout=10)
+                new_method_call(portal, "Screenshot", "sa{sv}", (parent, options)), timeout=10)
             return conn.recv_until_filtered(queue, timeout=PORTAL_TIMEOUT_S).body

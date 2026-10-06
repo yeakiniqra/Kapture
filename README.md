@@ -38,7 +38,7 @@ Just like installing Discord or VS Code — one file, done. No Python or termina
 
 **Step 1 — Download the .deb**
 
-Go to the [Releases page](https://github.com/yeakiniqra/Kapture/releases/tag/v4.0.0) and download `kapture_4.0.0_amd64.deb`.
+Go to the [Releases page](https://github.com/yeakiniqra/Kapture/releases/tag/v4.1.0) and download `kapture_4.1.0_amd64.deb`.
 
 ---
 
@@ -50,7 +50,7 @@ It will open in GNOME Software / GDebi. Click **Install** and enter your passwor
 **Option B — Terminal**
 
 ```bash
-sudo dpkg -i kapture_4.0.0_amd64.deb
+sudo dpkg -i kapture_4.1.0_amd64.deb
 # if apt reports missing dependencies, pull them in with:
 sudo apt -f install
 ```
@@ -73,6 +73,18 @@ The app starts silently in the system tray. Press `Print Screen` or `Ctrl+Shift+
 ```bash
 sudo apt remove kapture
 ```
+
+---
+
+### For Windows users
+
+> **Compatible with:** Windows 10 and 11, 64-bit.
+
+1. Download `Kapture-<version>-windows-x64.exe` from the [latest release](https://github.com/yeakiniqra/Kapture/releases/latest).
+2. Run it. It's a single portable file, so there's nothing to install. Keep it somewhere permanent, such as `Documents\Kapture`, because Kapture registers that path to start with Windows.
+3. Windows SmartScreen may warn about an unrecognised app, because the build isn't code-signed. Click **More info → Run anyway**.
+
+Kapture sits in the notification area (the `^` by the clock). Press `Ctrl+Shift+S` to capture, or pick **Print Screen** in Settings. Choosing Print Screen turns off Windows' own Snipping-Tool-on-Print, and switching back restores it.
 
 ---
 
@@ -127,6 +139,19 @@ bash build_deb.sh
 
 Output: `kapture_<version>_amd64.deb` (version read from `kapture/__init__.py`) — ready to share or install.
 
+### For Developers — build the Windows .exe
+
+Windows builds come from the **Windows build** GitHub Actions workflow (`.github/workflows/windows.yml`). It runs the self-test on Windows, builds with PyInstaller, and attaches `Kapture-<version>-windows-x64.exe` to the release whenever a `v*` tag is pushed. You can also start it by hand from the Actions tab. To build locally on Windows:
+
+```powershell
+py -3.12 -m venv venv; venv\Scripts\activate
+pip install -r requirements.txt
+python scripts\selftest.py
+pyinstaller kapture.spec        # -> dist\kapture.exe
+```
+
+After changing `assets/logo.svg`, regenerate the PNG and `.ico` with `python scripts/make_icons.py`.
+
 ### Project structure
 
 ```
@@ -138,6 +163,7 @@ kapture/
   gnome.py              GNOME keybinding / Print-key handover / helper setup
   dbus.py               session-bus helpers (jeepney)
   config.py             settings file, constants, resource paths
+  windows.py            Windows: Print Screen handover, autostart, focus
   theme.py              colour tokens, fonts, stylesheets (light + dark)
   icons.py              Lucide SVG icons tinted to the theme
   ui/overlay.py         region picker
@@ -176,8 +202,9 @@ Open the tray menu → **Settings** to configure:
 - **Capture shortcut** — pick the global hotkey (e.g. `Print`, `Ctrl+Shift+S`)
 - **Save folder** — where screenshots are written
 - **Auto-save** — skip the save dialog and drop straight into the save folder
+- **Start with Windows** (Windows only); on Linux the `.deb` installs an autostart entry
 
-Settings persist in `~/.config/kapture/config.json`.
+Settings persist in `~/.config/kapture/config.json` on Linux and `%APPDATA%\Kapture\config.json` on Windows.
 
 ## Features
 - Drag to select any region on screen
@@ -197,6 +224,11 @@ Settings persist in `~/.config/kapture/config.json`.
 - Ships a small GNOME Shell extension (`kapture-screenshot@yeakiniqra.github.io`) installed and registered by the `.deb`; activate with one log out/in
 
 ## Changelog
+
+### v4.1.0
+- **Windows support.** Kapture now runs on Windows 10 and 11 as a portable `.exe`. It includes a global capture hotkey, multi-monitor capture, an optional Print Screen takeover (Windows' Snipping-Tool-on-Print is restored when you switch back), start with Windows, a tray icon that follows the light/dark taskbar, and settings in `%APPDATA%\Kapture`.
+- The capture shortcut you choose in Settings now also applies on non-GNOME Linux desktops (X11), not only GNOME.
+- Screenshots default to your real Pictures folder, including localised and OneDrive-redirected ones.
 
 ### v4.0.0
 - **Rebuilt on Qt 6 (PySide6)** and split the single `main.py` into a `kapture` package

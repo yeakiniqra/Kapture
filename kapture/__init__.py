@@ -1,7 +1,7 @@
 """Kapture — a Lightshot-style screenshot tool for Linux."""
 
 APP_NAME = "Kapture"
-VERSION  = "4.0.0"
+VERSION  = "4.1.0"
 AUTHOR   = "Yeakin Iqra"
 
 

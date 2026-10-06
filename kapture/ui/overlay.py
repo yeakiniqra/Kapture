@@ -6,7 +6,9 @@ from PySide6.QtCore import QPoint, QRect, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QCursor, QFontMetrics, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 
+from kapture import windows
 from kapture.capture import CaptureResult
+from kapture.config import WINDOWS
 from kapture.theme import DARK, mono
 
 log = logging.getLogger("kapture")
@@ -27,15 +29,23 @@ class OverlayWindow(QWidget):
         self._dim = None
         self._font = mono(13)
         self._fm = QFontMetrics(self._font)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint |
-                            Qt.WindowType.WindowStaysOnTopHint |
-                            Qt.WindowType.BypassWindowManagerHint)
+        flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
         # Cover all screens using LOGICAL virtual geometry (the captured pixmap
         # carries devicePixelRatio, so logical coords map 1:1 when painted).
-        self.setGeometry(result.geometry)
-        self.showFullScreen()
+        if WINDOWS:
+            # showFullScreen() would clamp to one monitor; a plain show() at the
+            # virtual geometry spans them all. Tool keeps it off the taskbar.
+            self.setWindowFlags(flags | Qt.WindowType.Tool)
+            self.setGeometry(result.geometry)
+            self.show()
+        else:
+            self.setWindowFlags(flags | Qt.WindowType.BypassWindowManagerHint)
+            self.setGeometry(result.geometry)
+            self.showFullScreen()
         self.activateWindow()
+        self.setFocus()
+        windows.bring_to_front(self)
 
     def _scrimmed(self) -> QPixmap:
         """The frozen screen with the scrim baked in — built once, so a drag frame

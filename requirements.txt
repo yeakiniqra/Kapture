@@ -4,13 +4,13 @@ PySide6-Essentials==6.11.2
 shiboken6==6.11.2
 # Session D-Bus (GNOME helper, XDG portal). Pure Python; replaces QtDBus, which
 # in PySide6 can't decode the portal's a{sv} replies.
-jeepney==0.9.0
+jeepney==0.9.0; sys_platform == "linux"
 # asyncio <-> Qt event-loop bridge.
 qasync==0.28.0
-# Global hotkeys (pynput pulls in python-xlib / evdev on Linux).
+# Global hotkeys (pynput pulls in python-xlib / evdev on Linux; nothing extra on Windows).
 pynput==1.8.2
-python-xlib==0.33
-evdev==1.9.3
+python-xlib==0.33; sys_platform == "linux"
+evdev==1.9.3; sys_platform == "linux"
 
 # ── Packaging (build_deb.sh / PyInstaller) ────────────────────────────────────
 pyinstaller==6.20.0

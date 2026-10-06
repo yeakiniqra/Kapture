@@ -11,11 +11,13 @@ import json
 import os
 import random
 import sys
-import tempfile
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_cfg = os.path.join(tempfile.gettempdir(), "kapture-selftest-screens.json")
+# Qt splits the platform spec on ':' so the path must be relative (no drive letter).
+os.chdir(ROOT)
+os.makedirs("build", exist_ok=True)
+_cfg = os.path.join("build", "selftest-screens.json")
 with open(_cfg, "w") as f:                       # two 1920x1080 monitors side by side
     json.dump({"screens": [
         {"name": "L", "x": 0, "y": 0, "width": 1920, "height": 1080, "logicalDpi": 96,

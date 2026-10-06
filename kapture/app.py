@@ -22,16 +22,30 @@ from PySide6.QtNetwork import QLocalSocket  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon  # noqa: E402
 
 from kapture import APP_NAME  # noqa: E402
-from kapture.config import IPC_NAME, resource_path  # noqa: E402
+from kapture.config import CACHE_DIR, IPC_NAME, WINDOWS, resource_path  # noqa: E402
 from kapture.theme import load_fonts, sans  # noqa: E402
 
 log = logging.getLogger("kapture")
 
 
-def main():
+def _setup_logging():
+    handlers = None
+    if sys.stderr is None:                      # windowed (console-less) build: log to a file
+        try:
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            handlers = [logging.FileHandler(os.path.join(CACHE_DIR, "kapture.log"), encoding="utf-8")]
+        except OSError:
+            handlers = [logging.NullHandler()]
     logging.basicConfig(level=logging.DEBUG if os.environ.get("KAPTURE_DEBUG") else logging.INFO,
                         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-                        datefmt="%Y-%m-%d %H:%M:%S")
+                        datefmt="%Y-%m-%d %H:%M:%S", handlers=handlers)
+
+
+def main():
+    _setup_logging()
+    if WINDOWS:                                 # own taskbar identity (icon, grouping)
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("yeakiniqra.Kapture")
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setDesktopFileName("io.github.yeakiniqra.Kapture")

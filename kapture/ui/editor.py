@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (QApplication, QColorDialog, QFileDialog, QHBoxLay
 
 from shiboken6 import isValid
 
-from kapture import icons, spawn
+from kapture import icons, spawn, windows
 from kapture.config import CONFIG, save_config, save_dir
 from kapture.theme import BTN_H, DARK, btn_css, menu_css, mono, primary_css, sans, theme
 from kapture.ui.pin import PinWindow
@@ -317,6 +317,7 @@ class AnnotationWindow(QWidget):
         self.show()
         self.raise_()
         self.activateWindow()
+        windows.bring_to_front(self)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)

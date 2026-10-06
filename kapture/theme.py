@@ -9,7 +9,8 @@ import os
 import subprocess
 import time
 
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import QApplication
 
 from kapture.config import resource_path
@@ -59,6 +60,12 @@ def is_dark() -> bool:
                     dark = False
         except (OSError, subprocess.SubprocessError):
             pass
+    if dark is None:                    # Windows / macOS / KDE: Qt knows the OS setting
+        scheme = QGuiApplication.styleHints().colorScheme() if QGuiApplication.instance() else None
+        if scheme == Qt.ColorScheme.Dark:
+            dark = True
+        elif scheme == Qt.ColorScheme.Light:
+            dark = False
     if dark is None:
         app = QApplication.instance()
         dark = bool(app) and app.palette().window().color().lightness() < 128

@@ -11,10 +11,11 @@ from PySide6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
 from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from kapture import APP_NAME, gnome, icons, spawn
+from kapture import APP_NAME, gnome, icons, spawn, windows
 from kapture.capture import ScreenshotEngine
-from kapture.config import CAPTURE_DELAY_MS, HOTKEYS, IPC_NAME, binding_label, save_dir, touch_once
-from kapture.theme import menu_css, theme
+from kapture.config import (CAPTURE_DELAY_MS, CONFIG, IPC_NAME, PYNPUT_BINDINGS, WINDOWS,
+                            binding_label, save_config, save_dir, touch_once)
+from kapture.theme import is_dark, menu_css, theme
 from kapture.ui.dialogs import AboutDialog, HelperSetupDialog, SettingsDialog, show_capture_error
 from kapture.ui.editor import AnnotationWindow
 from kapture.ui.overlay import OverlayWindow
@@ -29,8 +30,9 @@ class _Bridge(QObject):
 
 class TrayApp(QSystemTrayIcon):
     def __init__(self, app: QApplication):
-        super().__init__(self._make_icon(), app)
+        super().__init__(self._make_icon(self._icon_color()), app)
         self.app = app
+        self._hotkeys = []
         self.engine = ScreenshotEngine()
         self.overlay = None
         self._capturing = False
@@ -43,14 +45,18 @@ class TrayApp(QSystemTrayIcon):
         self.activated.connect(self._on_activated)
         self.show()
 
-        # X11 fallback hotkey; GNOME (incl. Wayland) uses the custom keybinding,
-        # which triggers this instance over IPC.
         self._start_hotkey_listener()
         spawn(self._startup())
 
     async def _startup(self):
-        """GNOME setup is a dozen gsettings subprocesses (~100 ms): run it on a
-        worker thread so the tray is responsive immediately."""
+        """Platform setup off the UI thread (GNOME's is a dozen gsettings
+        subprocesses, ~100 ms) so the tray is responsive immediately."""
+        if WINDOWS:
+            windows.apply_binding()
+            if CONFIG.get("autostart") is None:        # first run: start with Windows,
+                CONFIG["autostart"] = True             # like the .deb does on Linux
+                save_config(CONFIG)
+                windows.set_autostart(True)
         if await asyncio.to_thread(gnome.helper_needs_login) and touch_once("helper_notice"):
             QTimer.singleShot(1500, self._offer_helper_activation)
         if await asyncio.to_thread(gnome.apply_binding) and touch_once("shortcuts_set"):
@@ -62,13 +68,19 @@ class TrayApp(QSystemTrayIcon):
                              "to capture a region.", QSystemTrayIcon.MessageIcon.Information, 3000)
 
     @staticmethod
-    def _make_icon() -> QIcon:
-        """White symbolic glyph drawn on GNOME's 16 px grid so it matches the weight
-        of the panel's own status icons (the colour logo is for launcher / About).
+    def _icon_color() -> str:
+        """GNOME's panel is always dark → white glyph. Windows' taskbar follows the
+        system theme, so the glyph flips with it."""
+        return "#FFFFFF" if not WINDOWS or is_dark() else "#1C1B22"
+
+    @staticmethod
+    def _make_icon(color: str) -> QIcon:
+        """Symbolic glyph drawn on GNOME's 16 px grid so it matches the weight of
+        the panel's own status icons (the colour logo is for launcher / About).
         16/32/48/64 are pixel-exact multiples of that grid; 22/24 serve other panels."""
         ic = QIcon()
         for s in (16, 22, 24, 32, 48, 64):
-            ic.addPixmap(icons.pixmap("kapture-symbolic", "#FFFFFF", s))
+            ic.addPixmap(icons.pixmap("kapture-symbolic", color, s))
         return ic
 
     def _setup_menu(self):
@@ -93,7 +105,8 @@ class TrayApp(QSystemTrayIcon):
             lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(save_dir())))
         menu.addSeparator()
         add("settings", "Settings", self._show_settings)
-        add("keyboard", "Set Capture Shortcut", self._setup_shortcut_interactive)
+        if gnome.available():
+            add("keyboard", "Set Capture Shortcut", self._setup_shortcut_interactive)
         menu.addSeparator()
         add("info", f"About {APP_NAME}", lambda: AboutDialog().exec())
         add("power", "Quit", self.app.quit)
@@ -109,6 +122,8 @@ class TrayApp(QSystemTrayIcon):
         menu.setStyleSheet(menu_css(t))
         for act, name in self._menu_icons:
             act.setIcon(icons.icon(name, t, 16, menu=True))
+        if WINDOWS:
+            self.setIcon(self._make_icon(self._icon_color()))
 
     def _on_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
@@ -160,20 +175,32 @@ class TrayApp(QSystemTrayIcon):
     # ── hotkeys & IPC ────────────────────────────────────────────────────────
 
     def _start_hotkey_listener(self):
-        hotkeys = [keyboard.HotKey(keyboard.HotKey.parse(hk), self.bridge.capture.emit)
-                   for hk in HOTKEYS]
+        """Global hotkey via pynput — Windows and non-GNOME X11. GNOME binds the
+        key itself (the only way on Wayland) and triggers us over IPC, so skip it
+        there rather than fire twice."""
+        if gnome.available():
+            return
+        self._set_hotkey(CONFIG.get("capture_binding"))
 
         def on_press(k):
-            for hk in hotkeys:
+            for hk in self._hotkeys:
                 hk.press(listener.canonical(k))
 
         def on_release(k):
-            for hk in hotkeys:
+            for hk in self._hotkeys:
                 hk.release(listener.canonical(k))
 
         listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         listener.daemon = True
         listener.start()
+
+    def _set_hotkey(self, binding: str):
+        combo = PYNPUT_BINDINGS.get(binding)
+        if combo is None:
+            log.warning("tray: no hotkey mapping for %r", binding)
+        # Swapped atomically: the listener thread only ever sees a complete list.
+        self._hotkeys = [] if combo is None else [
+            keyboard.HotKey(keyboard.HotKey.parse(combo), self.bridge.capture.emit)]
 
     def start_ipc_server(self):
         """Per-user local socket so `kapture --capture` (the GNOME shortcut)
@@ -216,7 +243,11 @@ class TrayApp(QSystemTrayIcon):
         SettingsDialog(apply_cb=self._apply_binding).exec()
 
     def _apply_binding(self, binding: str):
-        spawn(asyncio.to_thread(gnome.apply_binding, binding))
+        if gnome.available():
+            spawn(asyncio.to_thread(gnome.apply_binding, binding))
+        else:
+            self._set_hotkey(binding)
+            windows.apply_binding(binding)
         self._menu.actions()[0].setText(f"Capture Region  ({binding_label()})")
         self.setToolTip(f"{APP_NAME}\n{binding_label()} to capture")
 

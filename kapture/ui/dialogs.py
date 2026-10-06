@@ -7,8 +7,8 @@ from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLabel,
                                QMessageBox, QVBoxLayout)
 
-from kapture import APP_NAME, AUTHOR, VERSION, icons
-from kapture.config import CONFIG, SHORTCUTS, binding_label, resource_path, save_config
+from kapture import APP_NAME, AUTHOR, VERSION, icons, windows
+from kapture.config import CONFIG, SHORTCUTS, WINDOWS, binding_label, resource_path, save_config
 from kapture.theme import BTN_H, MONO, btn_css, mono, primary_css, theme
 from kapture.ui.widgets import CardDialog, button, label
 
@@ -164,7 +164,10 @@ class SettingsDialog(CardDialog):
         v.addWidget(self.combo)
         v.addSpacing(8)
 
-        hint = QLabel("Choosing “Print Screen” replaces GNOME’s built-in "
+        hint = QLabel("Choosing “Print Screen” turns off Windows’ own Print Screen "
+                      "handler (Snipping Tool). It’s restored if you switch back."
+                      if WINDOWS else
+                      "Choosing “Print Screen” replaces GNOME’s built-in "
                       "screenshot shortcut. It’s restored if you switch back.")
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {t['text_sec']}; font-size: 12px;")
@@ -189,20 +192,14 @@ class SettingsDialog(CardDialog):
         v.addLayout(row)
         v.addSpacing(24)
 
-        # Auto-save
-        self.autosave = QCheckBox("Auto-save (skip the file dialog)")
-        self.autosave.setChecked(bool(CONFIG.get("auto_save")))
-        self.autosave.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.autosave.setStyleSheet(f"""
-            QCheckBox {{ color: {t['text']}; spacing: 10px; }}
-            QCheckBox::indicator {{
-                width: 18px; height: 18px; border-radius: 4px;
-                border: 1px solid {t['border']}; background: transparent;
-            }}
-            QCheckBox::indicator:hover   {{ border-color: {t['text_sec']}; }}
-            QCheckBox::indicator:checked {{ background: {t['text']}; border-color: {t['text']}; }}
-        """)
+        # Auto-save (+ autostart on Windows; the .deb handles it on Linux)
+        self.autosave = _checkbox("Auto-save (skip the file dialog)", bool(CONFIG.get("auto_save")), t)
         v.addWidget(self.autosave)
+        self.autostart = None
+        if WINDOWS:
+            v.addSpacing(12)
+            self.autostart = _checkbox("Start with Windows", windows.autostart_enabled(), t)
+            v.addWidget(self.autostart)
         v.addSpacing(32)
 
         btns = QHBoxLayout()
@@ -227,10 +224,29 @@ class SettingsDialog(CardDialog):
         CONFIG["auto_save"] = self.autosave.isChecked()
         binding = SHORTCUTS[self.combo.currentIndex()][1]
         CONFIG["capture_binding"] = binding
+        if self.autostart is not None:
+            CONFIG["autostart"] = self.autostart.isChecked()
+            windows.set_autostart(CONFIG["autostart"])
         save_config(CONFIG)
         if self._apply_cb:
             self._apply_cb(binding)
         self.accept()
+
+
+def _checkbox(text: str, checked: bool, t: dict) -> QCheckBox:
+    box = QCheckBox(text)
+    box.setChecked(checked)
+    box.setCursor(Qt.CursorShape.PointingHandCursor)
+    box.setStyleSheet(f"""
+        QCheckBox {{ color: {t['text']}; spacing: 10px; }}
+        QCheckBox::indicator {{
+            width: 18px; height: 18px; border-radius: 4px;
+            border: 1px solid {t['border']}; background: transparent;
+        }}
+        QCheckBox::indicator:hover   {{ border-color: {t['text_sec']}; }}
+        QCheckBox::indicator:checked {{ background: {t['text']}; border-color: {t['text']}; }}
+    """)
+    return box
 
 
 def show_capture_error():
@@ -240,19 +256,25 @@ def show_capture_error():
     dlg.setWindowTitle(f"{APP_NAME} — Capture Failed")
     dlg.setIcon(QMessageBox.Icon.Warning)
     dlg.setTextFormat(Qt.TextFormat.RichText)
-    dlg.setText(
-        "<b>Couldn't capture the screen.</b><br><br>"
-        "Kapture captures natively (no external tools needed). On X11 this "
-        "always works; on Wayland it uses the desktop portal.<br><br>"
-        "If you're on a Wayland session where the portal is unavailable, "
-        "either log in with an <b>Xorg</b> session, or on a wlroots compositor "
-        "(Sway/Hyprland) install <code>grim</code>:")
-    dlg.setDetailedText(
-        "Wayland portal backend (present by default on Ubuntu GNOME/KDE):\n"
-        "  sudo apt install xdg-desktop-portal-gnome\n\n"
-        "wlroots compositors (Sway, Hyprland):\n"
-        "  sudo apt install grim\n\n"
-        "Or pick 'Ubuntu on Xorg' from the login screen gear menu.")
+    if WINDOWS:
+        dlg.setText("<b>Couldn't capture the screen.</b><br><br>"
+                    "Another app may be blocking screen capture (some games and "
+                    "DRM-protected video do this). Try again, or check the log in "
+                    "<code>%LOCALAPPDATA%\\Kapture\\cache</code>.")
+    else:
+        dlg.setText(
+            "<b>Couldn't capture the screen.</b><br><br>"
+            "Kapture captures natively (no external tools needed). On X11 this "
+            "always works; on Wayland it uses the desktop portal.<br><br>"
+            "If you're on a Wayland session where the portal is unavailable, "
+            "either log in with an <b>Xorg</b> session, or on a wlroots compositor "
+            "(Sway/Hyprland) install <code>grim</code>:")
+        dlg.setDetailedText(
+            "Wayland portal backend (present by default on Ubuntu GNOME/KDE):\n"
+            "  sudo apt install xdg-desktop-portal-gnome\n\n"
+            "wlroots compositors (Sway, Hyprland):\n"
+            "  sudo apt install grim\n\n"
+            "Or pick 'Ubuntu on Xorg' from the login screen gear menu.")
     dlg.setStyleSheet(btn_css(t, 6) + f"""
         QMessageBox {{ background-color: {t['bg']}; }}
         QLabel {{ color: {t['text']}; }}

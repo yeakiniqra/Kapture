@@ -10,14 +10,16 @@ reproducible and never contain anyone's real desktop.
 import json
 import os
 import sys
-import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "assets", "screenshots")
 W, H, DPR = 1440, 900, 2                     # scene size (logical) and export scale
 
 # A HiDPI virtual screen the size of the scene (the overlay goes full-screen on it).
-_cfg = os.path.join(tempfile.gettempdir(), "kapture-shots-screen.json")
+# Qt splits the platform spec on ':' so the path must be relative (no drive letter).
+os.chdir(ROOT)
+os.makedirs("build", exist_ok=True)
+_cfg = os.path.join("build", "shots-screen.json")
 with open(_cfg, "w") as f:
     json.dump({"screens": [{"name": "S", "x": 0, "y": 0, "width": W, "height": H,
                             "logicalDpi": 96, "logicalBaseDpi": 96, "dpr": DPR}]}, f)

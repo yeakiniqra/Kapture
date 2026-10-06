@@ -38,7 +38,7 @@ def file(name: str, color: str, size: int = 16) -> str:
     if not os.path.isfile(path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         pixmap(name, color, size * 2).save(path)    # save() ignores devicePixelRatio
-    return path
+    return path.replace(os.sep, "/")       # QSS url() treats backslashes as escapes
 
 
 def icon(name: str, t: dict, size: int = 18, menu: bool = False) -> QIcon:

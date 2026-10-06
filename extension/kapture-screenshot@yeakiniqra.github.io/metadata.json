@@ -1,8 +1,8 @@
 {
   "uuid": "kapture-screenshot@yeakiniqra.github.io",
   "name": "Kapture Screenshot Helper",
-  "description": "Provides a flash-free, prompt-free full-screen capture over D-Bus for the Kapture screenshot app. Runs inside GNOME Shell's privileged context where Shell.Screenshot is permitted, so captures avoid the camera-shutter flash and consent prompt that the XDG portal imposes on Wayland.",
+  "description": "Companion for the Kapture screenshot app. Makes Kapture's capture shortcut take flash-free screenshots on Wayland: the extension owns the shortcut, captures only when you press it, and opens the image in Kapture. It exposes no API, so no other program can take screenshots through it. Requires Kapture: https://github.com/yeakiniqra/Kapture",
   "shell-version": ["45", "46", "47", "48", "49", "50"],
-  "version": 3,
+  "settings-schema": "org.gnome.shell.extensions.kapture-screenshot",
   "url": "https://github.com/yeakiniqra/Kapture"
 }

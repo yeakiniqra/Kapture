@@ -70,8 +70,12 @@ def launch_command() -> str:
     return f'"{sys.executable}" "{resource_path("main.py")}" --capture'
 
 
+_KAPTURE_KEYBINDING = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/kapture/"
+_HELPER_SHORTCUT = "/org/gnome/shell/extensions/kapture-screenshot/capture-shortcut"
+
+
 def _register_keybinding(binding: str):
-    path = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/kapture/"
+    path = _KAPTURE_KEYBINDING
     paths = _parse_list(_get(_MEDIA_KEYS, "custom-keybindings"))
     if path not in paths:
         _set(_MEDIA_KEYS, "custom-keybindings", _fmt_list(paths + [path]))
@@ -124,14 +128,31 @@ def restore_screenshot_keys():
         pass
 
 
+def _unregister_keybinding():
+    paths = _parse_list(_get(_MEDIA_KEYS, "custom-keybindings"))
+    if _KAPTURE_KEYBINDING in paths:
+        _set(_MEDIA_KEYS, "custom-keybindings",
+             _fmt_list(p for p in paths if p != _KAPTURE_KEYBINDING))
+
+
 def apply_binding(binding: str = None) -> bool:
-    """Point the GNOME custom keybinding at Kapture (idempotent). Only displaces
-    GNOME's native screenshot when the user explicitly picked Print."""
+    """Bind the capture shortcut (idempotent). With the Shell helper active, the
+    helper owns the key (flash-free captures) and our custom keybinding is
+    removed so the two never grab the same accelerator; otherwise a GNOME custom
+    keybinding runs `kapture --capture`. Only displaces GNOME's native
+    screenshot when the user explicitly picked Print."""
     if not available():
         return False
     binding = binding or CONFIG.get("capture_binding", "<Control><Shift>s")
     try:
-        _register_keybinding(binding)
+        if dbus.has_owner(EXT_SERVICE):
+            # dconf writes the helper's key directly — no schema lookup needed,
+            # wherever the extension is installed. The Shell picks it up live.
+            subprocess.run(["dconf", "write", _HELPER_SHORTCUT, _fmt_list([binding])],
+                           check=True, timeout=5)
+            _unregister_keybinding()
+        else:
+            _register_keybinding(binding)
         if binding == "Print":
             _free_print()
         else:

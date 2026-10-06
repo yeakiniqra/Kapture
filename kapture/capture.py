@@ -2,7 +2,8 @@
 
     Windows                     ->  QScreen.grabWindow per monitor, composited
     X11 / XWayland-backed grab  ->  QScreen.grabWindow        (instant, no flash)
-    GNOME Wayland               ->  Kapture Shell extension    (flash-free)
+    GNOME Wayland, shortcut     ->  Kapture Shell extension takes the shot itself and
+                                    opens it in Kapture (flash-free; see tray._open_file)
     GNOME Wayland (older)       ->  org.gnome.Shell.Screenshot (flash-free where allowed)
     GNOME Wayland (fallback)    ->  XDG desktop portal         (flashes + prompts)
     KDE / other Wayland         ->  XDG desktop portal
@@ -32,14 +33,16 @@ PORTAL = dbus.addr("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/de
                    "org.freedesktop.portal.Screenshot")
 _REQUEST_IFACE = "org.freedesktop.portal.Request"
 
-# Kapture's bundled GNOME Shell extension exposes a flash-free, prompt-free
-# capture over D-Bus from INSIDE the Shell's privileged context — the only way
-# to avoid GNOME's shutter flash on Wayland (Mutter refuses Shell.Screenshot for
-# external apps, the portal always flashes, and grim needs wlr-screencopy).
+# Kapture's GNOME Shell extension owns the capture shortcut: on a real keypress
+# it captures from INSIDE the Shell (no shutter flash, no portal prompt) and opens
+# the image in Kapture. It deliberately has no API — nothing can ask it for a
+# screenshot — and owns this bus name only so Kapture can tell it's active.
 # Installed by the .deb to /usr/share/gnome-shell/extensions; enabled per user.
 EXT_UUID    = "kapture-screenshot@yeakiniqra.github.io"
-EXT_SERVICE = "org.kapture.ScreenshotHelper"
-EXT = dbus.addr(EXT_SERVICE, "/org/kapture/ScreenshotHelper", "org.kapture.ScreenshotHelper")
+EXT_SERVICE = "io.github.yeakiniqra.Kapture.ShellHelper"
+# Where the extension drops its screenshots (~/.cache/kapture/shots).
+SHOTS_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+                         "kapture", "shots")
 
 # GNOME's own screenshot interface.  On GNOME 41+ Mutter refuses this for
 # unconfined callers ("Screenshot is not allowed"); kept only as a best-effort
@@ -91,6 +94,34 @@ class CaptureResult:
                                          round(sel.width() * d), round(sel.height() * d)))
         cropped.setDevicePixelRatio(d)
         return cropped
+
+
+def from_file(path: str) -> 'QImage | None':
+    """Load a screenshot handed to Kapture as a file (the Shell helper's shots).
+    Thread-safe. Files from the helper's private shots dir are consumed (deleted)."""
+    image = QImage(path)
+    if os.path.dirname(os.path.realpath(path)) == os.path.realpath(SHOTS_DIR):
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    return None if image.isNull() else image
+
+
+def sweep_shots(max_age_s: float = 60):
+    """Delete helper screenshots nobody opened (e.g. Kapture failed to start)."""
+    import time
+    try:
+        for name in os.listdir(SHOTS_DIR):
+            path = os.path.join(SHOTS_DIR, name)
+            if time.time() - os.path.getmtime(path) > max_age_s:
+                os.unlink(path)
+    except OSError:
+        pass
+
+
+def wrap_image(image: QImage) -> CaptureResult:
+    return _wrap(QPixmap.fromImage(image))
 
 
 def _wrap(pixmap: QPixmap) -> CaptureResult:
@@ -149,10 +180,9 @@ class ScreenshotEngine:
             # Wayland capture order, best UX first. Never a silent black grabWindow.
             # D-Bus round-trip + PNG decode (~250 ms at 4K) run on a worker
             # thread so the UI never stalls; only the QPixmap is made here.
-            for backend in (self._extension, self._gnome_shell):
-                image = await asyncio.to_thread(backend)
-                if image is not None:
-                    return _wrap(QPixmap.fromImage(image))
+            image = await asyncio.to_thread(self._gnome_shell)
+            if image is not None:
+                return _wrap(QPixmap.fromImage(image))
             if dbus.has_owner(PORTAL[1]):
                 try:
                     return await self._portal()
@@ -207,14 +237,6 @@ class ScreenshotEngine:
         p.end()
         canvas.setDevicePixelRatio(dpr)
         return CaptureResult(canvas, geo, dpr)
-
-    @staticmethod
-    def _extension() -> 'QImage | None':
-        """Flash-free capture via Kapture's GNOME Shell extension. None if the
-        helper isn't loaded yet (no relogin since install) so the portal takes over."""
-        if not dbus.has_owner(EXT_SERVICE):
-            return None
-        return _via_tempfile(lambda tmp: dbus.call(EXT, "CaptureToFile", "s", (tmp,))[0])
 
     @staticmethod
     def _gnome_shell() -> 'QImage | None':

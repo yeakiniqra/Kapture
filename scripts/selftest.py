@@ -171,6 +171,28 @@ while "ipc" not in calls and time.time() - t < 2:
     app.processEvents()
 check("ipc" in calls, "IPC capture request is never lost")
 
+# ── Shell-helper handoff: `kapture <image>` → IPC "open:<path>" ──────────────
+import kapture.capture as capture  # noqa: E402
+tray.open_file = lambda path: calls.append(("open", path))
+sock = QLocalSocket()
+sock.connectToServer(tray_mod.IPC_NAME)
+sock.waitForConnected(500)
+sock.write(b"open:/tmp/shot.png")
+sock.flush()
+t = time.time()
+while ("open", "/tmp/shot.png") not in calls and time.time() - t < 2:
+    app.processEvents()
+check(("open", "/tmp/shot.png") in calls, "IPC open:<path> reaches open_file")
+
+capture.SHOTS_DIR = os.path.join("build", "selftest-shots")
+os.makedirs(capture.SHOTS_DIR, exist_ok=True)
+shot, other = os.path.join(capture.SHOTS_DIR, "s.png"), os.path.join("build", "selftest-other.png")
+for p in (shot, other):
+    noise(8, 8).save(p)
+check(capture.from_file(shot) is not None and not os.path.exists(shot), "helper shot is loaded and consumed")
+check(capture.from_file(other) is not None and os.path.exists(other), "other images are never deleted")
+os.unlink(other)
+
 # ── smoothness budget (paint per drag frame) ─────────────────────────────────
 ed = editor.AnnotationWindow(noise(1200, 700), QRect(0, 0, 1200, 700))
 ed.select_tool("pen")

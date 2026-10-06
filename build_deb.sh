@@ -70,13 +70,18 @@ PYICON
 install -m 644 "${DEB_DIR}/usr/share/icons/hicolor/512x512/apps/${APP_ID}.png" \
               "${DEB_DIR}/usr/share/pixmaps/${APP_ID}.png"
 
-# GNOME Shell extension — flash-free, prompt-free capture on Wayland.
+# GNOME Shell extension — owns the capture shortcut for flash-free captures on
+# Wayland. Its settings schema is compiled here: a system-wide extension dir is
+# read-only, so GNOME can't compile it at load time.
 EXT_UUID="kapture-screenshot@yeakiniqra.github.io"
 EXT_SRC="extension/${EXT_UUID}"
 EXT_DEST="${DEB_DIR}/usr/share/gnome-shell/extensions/${EXT_UUID}"
-mkdir -p "${EXT_DEST}"
+mkdir -p "${EXT_DEST}/schemas"
 install -m 644 "${EXT_SRC}/metadata.json" "${EXT_DEST}/metadata.json"
 install -m 644 "${EXT_SRC}/extension.js"  "${EXT_DEST}/extension.js"
+install -m 644 LICENSE                    "${EXT_DEST}/LICENSE"
+install -m 644 "${EXT_SRC}"/schemas/*.gschema.xml "${EXT_DEST}/schemas/"
+glib-compile-schemas --strict "${EXT_DEST}/schemas"
 
 # Desktop entry (shows Kapture in the app menu / launcher). Named after APP_ID so
 # the metainfo <launchable> can bind to it; Icon= uses APP_ID to match the icons.
@@ -87,7 +92,7 @@ Type=Application
 Name=Kapture
 GenericName=Screenshot Tool
 Comment=Lightshot-style screenshot and annotation tool
-Exec=kapture
+Exec=kapture %f
 Icon=${APP_ID}
 Categories=Graphics;Utility;
 Keywords=screenshot;capture;annotation;snip;
@@ -218,7 +223,7 @@ Priority: optional
 Architecture: ${ARCH}
 Maintainer: ${MAINTAINER}
 Installed-Size: ${INSTALLED_SIZE}
-Depends: libc6, libxcb-xinerama0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-cursor0, libxcb-shape0, libxcb-xkb1, libxkbcommon-x11-0, libfontconfig1, libegl1
+Depends: libc6, libxcb-xinerama0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render-util0, libxcb-cursor0, libxcb-shape0, libxcb-xkb1, libxkbcommon-x11-0, libfontconfig1, libegl1, dconf-cli
 Recommends: xdg-desktop-portal-gnome | xdg-desktop-portal | grim
 Homepage: https://github.com/yeakiniqra/Kapture
 Description: ${DESCRIPTION}

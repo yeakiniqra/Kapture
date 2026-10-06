@@ -191,8 +191,14 @@ def draw_page_window(p: QPainter, page: QPixmap):
 
 
 def grab(widget) -> QPixmap:
+    """Render at the export scale. (The offscreen platform's grab() of a
+    top-level window comes back at 1x regardless of the screen's DPR.)"""
     app.processEvents()
-    return widget.grab()
+    pm = QPixmap(widget.width() * DPR, widget.height() * DPR)
+    pm.setDevicePixelRatio(DPR)
+    pm.fill(Qt.GlobalColor.transparent)
+    widget.render(pm)
+    return pm
 
 
 def save(img: QImage, name: str):
@@ -285,6 +291,8 @@ def editors(page):
         p.drawPixmap(pad, pad, shot)
         p.end()
         save(img, f"editor-{mode}.png")
+        if mode == "dark":                  # transparent cut-out for the website hero
+            save(shot.toImage(), "editor-float.png")
         ed.close()
 
 

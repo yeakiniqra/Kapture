@@ -52,12 +52,15 @@ def main():
     app.setQuitOnLastWindowClosed(False)            # stay alive in the tray
 
     want_capture = "--capture" in sys.argv[1:]
+    # `kapture <image>`: how the GNOME Shell helper hands over its screenshot.
+    open_path = next((os.path.abspath(a) for a in sys.argv[1:] if not a.startswith("-")), None)
 
     # Single instance: if Kapture is already running, forward the request.
     probe = QLocalSocket()
     probe.connectToServer(IPC_NAME)
     if probe.waitForConnected(300):
-        probe.write(b"capture" if want_capture else b"show")
+        probe.write(f"open:{open_path}".encode() if open_path
+                    else b"capture" if want_capture else b"show")
         probe.flush()
         probe.waitForBytesWritten(500)
         probe.disconnectFromServer()
@@ -78,7 +81,9 @@ def main():
     from kapture.tray import TrayApp            # after QApplication exists
     tray = TrayApp(app)
     tray.start_ipc_server()
-    if want_capture:   # launched as `kapture --capture` while not running
+    if open_path:      # launched with a screenshot while not running
+        QTimer.singleShot(0, lambda: tray.open_file(open_path))
+    elif want_capture:   # launched as `kapture --capture` while not running
         QTimer.singleShot(600, tray.start_capture)
 
     with loop:

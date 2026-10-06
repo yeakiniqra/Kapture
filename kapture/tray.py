@@ -12,6 +12,7 @@ from PySide6.QtNetwork import QLocalServer
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from kapture import APP_NAME, gnome, icons, spawn, windows
+from kapture import capture
 from kapture.capture import ScreenshotEngine
 from kapture.config import (CAPTURE_DELAY_MS, CONFIG, IPC_NAME, PYNPUT_BINDINGS, WINDOWS,
                             binding_label, save_config, save_dir, touch_once)
@@ -57,6 +58,7 @@ class TrayApp(QSystemTrayIcon):
                 CONFIG["autostart"] = True             # like the .deb does on Linux
                 save_config(CONFIG)
                 windows.set_autostart(True)
+        await asyncio.to_thread(capture.sweep_shots)
         if await asyncio.to_thread(gnome.helper_needs_login) and touch_once("helper_notice"):
             QTimer.singleShot(1500, self._offer_helper_activation)
         if await asyncio.to_thread(gnome.apply_binding) and touch_once("shortcuts_set"):
@@ -156,9 +158,26 @@ class TrayApp(QSystemTrayIcon):
         if full:
             await self._save_full(result.pixmap)
             return
+        self._show_overlay(result)
+
+    def _show_overlay(self, result):
         self.overlay = OverlayWindow(result)
         self.overlay.region_selected.connect(self._open_editor)
         self.overlay.fullscreen_selected.connect(lambda pm: spawn(self._save_full(pm)))
+
+    def open_file(self, path: str):
+        """A screenshot handed to us as a file — the GNOME Shell helper's flash-free
+        shortcut capture (via the .desktop file), or `kapture <image>`."""
+        if self.overlay is not None and self.overlay.isVisible():
+            return
+        spawn(self._open_file(path))
+
+    async def _open_file(self, path: str):
+        image = await asyncio.to_thread(capture.from_file, path)    # decode off the UI thread
+        if image is None:
+            log.warning("tray: couldn't open %s", path)
+            return
+        self._show_overlay(capture.wrap_image(image))
 
     def _open_editor(self, cropped: QPixmap, region: QRect):
         AnnotationWindow(cropped, region)       # keeps itself alive while open
@@ -222,7 +241,9 @@ class TrayApp(QSystemTrayIcon):
             if not data:
                 return
             log.info("tray: IPC %r", data)
-            if "capture" in data:
+            if data.startswith("open:"):
+                self.open_file(data[len("open:"):])
+            elif "capture" in data:
                 self.capture_now()
             conn.disconnectFromServer()
 

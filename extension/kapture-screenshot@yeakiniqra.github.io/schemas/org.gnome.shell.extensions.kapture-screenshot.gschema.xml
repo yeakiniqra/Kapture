@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.kapture-screenshot"
+          path="/org/gnome/shell/extensions/kapture-screenshot/">
+    <key name="capture-shortcut" type="as">
+      <default><![CDATA[['<Control><Shift>s']]]></default>
+      <summary>Capture shortcut</summary>
+      <description>Keyboard shortcut that takes a screenshot and opens it in Kapture. Set from Kapture's Settings window.</description>
+    </key>
+  </schema>
+</schemalist>

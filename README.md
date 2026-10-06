@@ -64,7 +64,7 @@ Search for **Kapture** in your app launcher, or run `kapture` in a terminal.
 The app starts silently in the system tray. Press `Print Screen` or `Ctrl+Shift+S` to take a screenshot — the capture is instant and uses no external tools. The capture shortcut, save folder and auto-save can all be changed from **tray → Settings**.
 
 > **GNOME Wayland users — one-time step for flash-free capture.**
-> On GNOME's Wayland session the system screenshot portal always plays a shutter flash and asks for permission — that's an OS limitation no normal app can bypass. Kapture ships a tiny **GNOME Shell extension** that captures from inside the Shell with **no flash and no prompt**. The `.deb` installs and registers it automatically; just **log out and back in once** after installing to activate it. Until then, captures fall back to the portal (with the flash). On an **X11/Xorg** session no extension is needed — capture is already instant and flash-free.
+> On GNOME's Wayland session the system screenshot portal always plays a shutter flash and asks for permission — that's an OS limitation no normal app can bypass. Kapture ships a tiny **GNOME Shell extension** that owns your capture shortcut and captures from inside the Shell with **no flash and no prompt**. It only captures when you press the shortcut and has no API, so other apps can't use it to take screenshots. The `.deb` installs and registers it automatically; just **log out and back in once** after installing to activate it. Until then, and for captures started from the tray menu, Kapture uses the portal (with the flash). On an **X11/Xorg** session no extension is needed — capture is already instant and flash-free.
 
 ---
 
@@ -118,12 +118,15 @@ pip install -r requirements.txt
 python3 main.py
 ```
 
-> **GNOME Wayland (running from source):** the flash-free Shell extension is bundled only in the `.deb`. To get flash-free capture during development, install it into your user dir once and log out/in:
+> **GNOME Wayland (running from source):** the flash-free Shell extension is bundled only in the `.deb`. To try it from source, install it with GNOME's tools (they compile its settings schema; a plain copy won't load), add a desktop entry so the extension can find Kapture, then log out and back in:
 > ```bash
-> cp -r "extension/kapture-screenshot@yeakiniqra.github.io" ~/.local/share/gnome-shell/extensions/
+> gnome-extensions pack extension/kapture-screenshot@yeakiniqra.github.io --extra-source="$PWD/LICENSE" -o dist --force
+> gnome-extensions install --force dist/kapture-screenshot@yeakiniqra.github.io.shell-extension.zip
+> printf '[Desktop Entry]\nType=Application\nName=Kapture\nExec="%s" "%s" %%f\n' "$PWD/venv/bin/python" "$PWD/main.py" \
+>   > ~/.local/share/applications/io.github.yeakiniqra.Kapture.desktop
 > gnome-extensions enable kapture-screenshot@yeakiniqra.github.io   # after re-login
 > ```
-> Without it, source runs fall back to the portal (with the flash).
+> Remove the user copy (`gnome-extensions uninstall kapture-screenshot@yeakiniqra.github.io`) before installing the `.deb`. A copy in your home folder overrides the system one, so an old copy keeps loading after upgrades.
 
 ---
 
@@ -220,10 +223,15 @@ Settings persist in `~/.config/kapture/config.json` on Linux and `%APPDATA%\Kapt
 - Close button pinned to the window's top-right corner, like any native app
 - Draggable toolbar with remembered last position
 - Runs silently in the system tray
-- **Native capture pipeline — no external screenshot tools.** Instant `QScreen` grab on X11; on GNOME Wayland a bundled GNOME Shell extension captures **flash-free and prompt-free**, with the XDG desktop portal as the automatic fallback
+- **Native capture pipeline — no external screenshot tools.** Instant `QScreen` grab on X11; on GNOME Wayland a bundled GNOME Shell extension makes shortcut captures **flash-free and prompt-free**, with the XDG desktop portal as the automatic fallback
 - Ships a small GNOME Shell extension (`kapture-screenshot@yeakiniqra.github.io`) installed and registered by the `.deb`; activate with one log out/in
 
 ## Changelog
+
+### v4.2.0
+- **Safer GNOME Shell helper.** The helper extension now owns the capture shortcut itself. It captures only when you press it and opens the image in Kapture. It no longer exposes a D-Bus method, so other programs can't use it to take silent screenshots. Shortcut captures stay flash-free; captures started from the tray menu use the desktop portal.
+- The helper is ready for extensions.gnome.org (GNOME 45–50).
+- Changing the shortcut in Settings applies instantly, with no re-login.
 
 ### v4.1.0
 - **Windows support.** Kapture now runs on Windows 10 and 11 as a portable `.exe`. It includes a global capture hotkey, multi-monitor capture, an optional Print Screen takeover (Windows' Snipping-Tool-on-Print is restored when you switch back), start with Windows, a tray icon that follows the light/dark taskbar, and settings in `%APPDATA%\Kapture`.
